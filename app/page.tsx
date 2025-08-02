@@ -10,157 +10,106 @@ export default function Home() {
   const { user, loading, signOut } = useAuth();
 
   // Face detection states
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [modelsLoaded, setModelsLoaded] = useState(false);
-  const [isWebcamStarted, setIsWebcamStarted] = useState(false);
-  const [error, setError] = useState<string>("");
-  const [mode, setMode] = useState<"recognition" | "registration">(
-    "recognition"
-  );
-  const [isRegistering, setIsRegistering] = useState(false);
-  const [newPersonName, setNewPersonName] = useState("");
-  const [newPersonContext, setNewPersonContext] = useState("");
-  const [storedFaces, setStoredFaces] = useState<
-    Array<{
-      name: string;
-      context: string;
-      descriptors: Float32Array[];
-    }>
-  >([]);
-  const [faceMatcher, setFaceMatcher] = useState<any>(null);
-  const [referenceImageLoaded, setReferenceImageLoaded] = useState(false);
-  const [referencePeople, setReferencePeople] = useState<
-    Array<{ name: string; loaded: boolean }>
-  >([
-    { name: "Thomas", loaded: false },
-    { name: "Parth", loaded: false },
-  ]);
-  const [debugMode, setDebugMode] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [modelsLoaded, setModelsLoaded] = useState(false)
+  const [isWebcamStarted, setIsWebcamStarted] = useState(false)
+  const [error, setError] = useState<string>('')
+  const [faceMatcher, setFaceMatcher] = useState<any>(null)
+  const [dbPersons, setDbPersons] = useState<Array<{
+    id: string;
+    name: string;
+    description: string;
+    relationship: string;
+    presignedImageUrl?: string;
+  }>>([]);
+  const [facesLoaded, setFacesLoaded] = useState(false);
+  const [debugMode, setDebugMode] = useState(false)
 
-  // Load face-api models when user is logged in
+  // Load face-api models and fetch faces from DB
   useEffect(() => {
     if (!user) return;
 
-    const loadModels = async () => {
+    const loadAssets = async () => {
       try {
-        // Load required models for face detection and recognition
+        // Load face-api models
         await faceapi.nets.tinyFaceDetector.loadFromUri("/models");
         await faceapi.nets.faceLandmark68Net.loadFromUri("/models");
         await faceapi.nets.faceRecognitionNet.loadFromUri("/models");
-
         setModelsLoaded(true);
 
-        // Load reference images for Thomas and Parth
-        await loadReferenceImages();
+        // Fetch persons from the database
+        const response = await fetch(`/api/persons?userId=${user.id}`);
+        if (!response.ok) {
+          throw new Error("Failed to fetch persons from the database.");
+        }
+        const persons = await response.json();
+        setDbPersons(persons);
+
+        // Load faces and create a face matcher
+        await loadFacesFromDB(persons);
       } catch (err) {
         setError(
-          "Failed to load face detection models. Please ensure all model files are in the /public/models directory."
+          "Failed to load assets. Please check the console for more details."
         );
+        console.error(err);
       }
     };
 
-    loadModels();
+    loadAssets();
   }, [user]);
 
-  // Load reference images and create face matcher
-  const loadReferenceImages = async () => {
+  // Load faces from the database and create a face matcher
+  const loadFacesFromDB = async (persons: any[]) => {
+    if (persons.length === 0) {
+      setFacesLoaded(true);
+      return;
+    }
+
     try {
-      const labeledDescriptors = [];
+      const labeledDescriptors = await Promise.all(
+        persons.map(async (person) => {
+          if (!person.presignedImageUrl) return null;
 
-      // Load Thomas's image
-      try {
-        const thomasImg = await faceapi.fetchImage("/onePersonFace.png");
+          try {
+            const img = await faceapi.fetchImage(person.presignedImageUrl);
+            const detection = await faceapi
+              .detectSingleFace(
+                img,
+                new faceapi.TinyFaceDetectorOptions({
+                  inputSize: 416,
+                  scoreThreshold: 0.5,
+                })
+              )
+              .withFaceLandmarks()
+              .withFaceDescriptor();
 
-        const thomasDetection = await faceapi
-          .detectSingleFace(
-            thomasImg,
-            new faceapi.TinyFaceDetectorOptions({
-              inputSize: 416,
-              scoreThreshold: 0.3, // Lower threshold for better detection
-            })
-          )
-          .withFaceLandmarks()
-          .withFaceDescriptor();
-
-        if (thomasDetection) {
-          labeledDescriptors.push(
-            new faceapi.LabeledFaceDescriptors("Thomas", [
-              thomasDetection.descriptor,
-            ])
-          );
-          setReferencePeople((prev) =>
-            prev.map((p) => (p.name === "Thomas" ? { ...p, loaded: true } : p))
-          );
-        } else {
-        }
-      } catch (err) {}
-
-      // Load Parth's image
-      try {
-        const parthImg = await faceapi.fetchImage("/onePersonFace2.png");
-
-        const parthDetection = await faceapi
-          .detectSingleFace(
-            parthImg,
-            new faceapi.TinyFaceDetectorOptions({
-              inputSize: 416,
-              scoreThreshold: 0.3, // Lower threshold for better detection
-            })
-          )
-          .withFaceLandmarks()
-          .withFaceDescriptor();
-
-        if (parthDetection) {
-          labeledDescriptors.push(
-            new faceapi.LabeledFaceDescriptors("Parth", [
-              parthDetection.descriptor,
-            ])
-          );
-          setReferencePeople((prev) =>
-            prev.map((p) => (p.name === "Parth" ? { ...p, loaded: true } : p))
-          );
-        } else {
-          // Try with more permissive settings
-          const retryDetection = await faceapi
-            .detectSingleFace(
-              parthImg,
-              new faceapi.TinyFaceDetectorOptions({
-                inputSize: 320,
-                scoreThreshold: 0.1,
-              })
-            )
-            .withFaceLandmarks()
-            .withFaceDescriptor();
-
-          if (retryDetection) {
-            labeledDescriptors.push(
-              new faceapi.LabeledFaceDescriptors("Parth", [
-                retryDetection.descriptor,
-              ])
-            );
-            setReferencePeople((prev) =>
-              prev.map((p) => (p.name === "Parth" ? { ...p, loaded: true } : p))
-            );
-          } else {
+            if (detection) {
+              return new faceapi.LabeledFaceDescriptors(person.name, [
+                detection.descriptor,
+              ]);
+            }
+            return null;
+          } catch (e) {
+            console.error(`Failed to load image for ${person.name}`, e);
+            return null;
           }
-        }
-      } catch (err) {}
+        })
+      );
 
-      // Create face matcher if we have at least one reference
-      if (labeledDescriptors.length > 0) {
-        const matcher = new faceapi.FaceMatcher(labeledDescriptors, 0.6);
+      const validDescriptors = labeledDescriptors.filter(
+        (d) => d !== null
+      ) as faceapi.LabeledFaceDescriptors[];
+
+      if (validDescriptors.length > 0) {
+        const matcher = new faceapi.FaceMatcher(validDescriptors, 0.6);
         setFaceMatcher(matcher);
-        setReferenceImageLoaded(true);
-      } else {
-        setError(
-          "No reference faces could be loaded. Please check onePersonFace.png and onePersonFace2.png in /public directory."
-        );
       }
     } catch (err) {
-      setError(
-        "Failed to load reference images. Please ensure images are in the /public directory."
-      );
+      setError("Failed to build face matcher from database.");
+      console.error(err);
+    } finally {
+      setFacesLoaded(true);
     }
   };
 
@@ -180,68 +129,6 @@ export default function Home() {
     }
   };
 
-  // Register a new face
-  const registerFace = async () => {
-    if (!videoRef.current || !newPersonName.trim()) return;
-
-    setIsRegistering(true);
-    try {
-      const detections = await faceapi
-        .detectAllFaces(
-          videoRef.current,
-          new faceapi.TinyFaceDetectorOptions({
-            inputSize: 416,
-            scoreThreshold: 0.5,
-          })
-        )
-        .withFaceLandmarks()
-        .withFaceDescriptors();
-
-      if (detections.length === 0) {
-        setError(
-          "No face detected. Please ensure your face is clearly visible."
-        );
-        return;
-      }
-
-      if (detections.length > 1) {
-        setError(
-          "Multiple faces detected. Please ensure only one person is in frame."
-        );
-        return;
-      }
-
-      const descriptor = detections[0].descriptor;
-
-      // Store the new face
-      const newFace = {
-        name: newPersonName.trim(),
-        context: newPersonContext.trim(),
-        descriptors: [descriptor],
-      };
-
-      const updatedFaces = [...storedFaces, newFace];
-      setStoredFaces(updatedFaces);
-
-      // Update face matcher
-      const labeledDescriptors = updatedFaces.map(
-        (face) =>
-          new faceapi.LabeledFaceDescriptors(face.name, face.descriptors)
-      );
-      setFaceMatcher(new faceapi.FaceMatcher(labeledDescriptors, 0.6));
-
-      // Reset form
-      setNewPersonName("");
-      setNewPersonContext("");
-      setMode("recognition");
-      setError("");
-    } catch (err) {
-      setError("Failed to register face. Please try again.");
-    } finally {
-      setIsRegistering(false);
-    }
-  };
-
   // Detect faces in real-time
   const handleVideoPlay = () => {
     if (!videoRef.current || !canvasRef.current || !modelsLoaded) return;
@@ -249,14 +136,12 @@ export default function Home() {
     const canvas = canvasRef.current;
     const video = videoRef.current;
 
-    // Use actual video dimensions like the working version
     const displaySize = { width: video.width, height: video.height };
     faceapi.matchDimensions(canvas, displaySize);
 
     const detectFaces = async () => {
       if (!video || !canvas) return;
 
-      // Detect faces with landmarks and descriptors
       const detections = await faceapi
         .detectAllFaces(
           video,
@@ -268,103 +153,40 @@ export default function Home() {
         .withFaceLandmarks()
         .withFaceDescriptors();
 
-      // Clear previous drawings
       const ctx = canvas.getContext("2d");
       if (ctx) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       }
 
-      // Resize detections to match display size
       const resizedDetections = faceapi.resizeResults(detections, displaySize);
 
-      // Draw detections
-      faceapi.draw.drawDetections(canvas, resizedDetections);
-      faceapi.draw.drawFaceLandmarks(canvas, resizedDetections);
-
-      // Recognition mode: identify faces
-      if (
-        mode === "recognition" &&
-        faceMatcher &&
-        resizedDetections.length > 0
-      ) {
-        resizedDetections.forEach((detection, i) => {
+      if (faceMatcher && resizedDetections.length > 0) {
+        resizedDetections.forEach((detection) => {
           const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
           const { label, distance } = bestMatch;
 
-          let displayText = "";
+          let displayText = `Unknown (${(1 - distance).toFixed(2)})`;
           let textColor = "#ff0000"; // Red for unknown
 
-          if (label === "Thomas" || label === "Parth") {
-            const confidence = Math.round((1 - distance) * 100);
-            displayText = `${label} (${confidence}%)`;
-            textColor = "#00ff00"; // Green for known faces
-
-            if (debugMode) {
-              displayText += `\nDist: ${distance.toFixed(3)}`;
-            }
-          } else {
-            displayText = "Unknown Person";
-            if (debugMode) {
-              displayText += `\nDist: ${distance.toFixed(3)}`;
-            }
+          if (label !== "unknown") {
+            const person = dbPersons.find((p) => p.name === label);
+            displayText = `${person?.name} (${person?.relationship})`;
+            textColor = "#00ff00"; // Green for known
           }
 
           if (ctx) {
             const box = detection.detection.box;
             ctx.fillStyle = textColor;
-            ctx.font = debugMode ? "14px Arial" : "20px Arial";
+            ctx.font = "20px Arial";
             ctx.strokeStyle = "black";
             ctx.lineWidth = 3;
-
-            // Draw text with background for better visibility
-            const lines = displayText.split("\n");
-            lines.forEach((line, lineIndex) => {
-              const y = box.y - 10 - (lines.length - 1 - lineIndex) * 18;
-              ctx.strokeText(line, box.x, y);
-              ctx.fillText(line, box.x, y);
-            });
-
-            if (debugMode) {
-              // Draw detection score
-              ctx.fillStyle = "#ffff00";
-              ctx.fillText(
-                `Score: ${detection.detection.score.toFixed(3)}`,
-                box.x,
-                box.y + box.height + 20
-              );
-            }
-          }
-        });
-      } else if (mode === "registration") {
-        // Registration mode: show instructions
-        resizedDetections.forEach((detection, i) => {
-          const { score } = detection.detection;
-          const text =
-            detections.length === 1
-              ? "Ready to register!"
-              : `${detections.length} faces detected - ensure only one person in frame`;
-
-          if (ctx) {
-            ctx.fillStyle = detections.length === 1 ? "#00ff00" : "#ff9900";
-            ctx.font = "16px Arial";
-            ctx.strokeStyle = "black";
-            ctx.lineWidth = 2;
-            ctx.strokeText(
-              text,
-              detection.detection.box.x,
-              detection.detection.box.y - 10
-            );
-            ctx.fillText(
-              text,
-              detection.detection.box.x,
-              detection.detection.box.y - 10
-            );
+            ctx.strokeText(displayText, box.x, box.y - 10);
+            ctx.fillText(displayText, box.x, box.y - 10);
           }
         });
       }
     };
 
-    // Run detection every 100ms
     const interval = setInterval(detectFaces, 100);
 
     return () => clearInterval(interval);
@@ -409,9 +231,7 @@ export default function Home() {
             <div className="flex items-center space-x-2 sm:space-x-4">
               {user ? (
                 <>
-                  <span className="hidden sm:block text-slate-600 text-sm">
-                    Welcome, {user.email}
-                  </span>
+                  <span className="hidden sm:block text-slate-600 text-sm">Welcome, {user.email}</span>
                   <button
                     onClick={signOut}
                     className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-3 sm:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg"
@@ -444,18 +264,18 @@ export default function Home() {
         {user ? (
           <div className="space-y-4 sm:space-y-6 px-4 sm:px-0">
             {/* Welcome Section */}
-            <header className="bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 w-full border-b border-border/40">
-              <div className="container flex h-16 items-center space-x-4 sm:justify-between sm:space-x-0">
-                <div className="flex gap-6 md:gap-10">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-xl font-bold text-care-trust">
-                      Memory Care
-                    </span>
-                  </div>
-                </div>
-                <div className="flex flex-1 items-center justify-end space-x-4">
-                  <nav className="flex items-center space-x-1"></nav>
-                </div>
+            <div className="bg-white/70 backdrop-blur-sm overflow-hidden shadow-xl rounded-2xl border border-blue-100">
+              <div className="px-4 py-5 sm:p-6">
+                <h2 className="text-lg sm:text-xl font-bold text-slate-800 mb-4 flex items-center">
+                  <span className="w-2 h-2 bg-green-500 rounded-full mr-3"></span>
+                  Welcome to Memory Care
+                </h2>
+                <p className="text-slate-600 mb-4 text-sm sm:text-base">
+                  The face recognition system is active. Use the camera feed below to identify registered individuals.
+                </p>
+                <Link href="/person" className="text-indigo-600 hover:underline">
+                  Manage Registered Persons
+                </Link>
               </div>
             </header>
 
@@ -477,46 +297,27 @@ export default function Home() {
               <div className="text-center mb-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center lg:justify-center gap-3 lg:gap-6 mb-6">
                   <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
-                    <div
-                      className={`w-3 h-3 rounded-full ${
-                        modelsLoaded ? "bg-green-500" : "bg-red-500"
-                      } animate-pulse`}
-                    ></div>
+                    <div className={`w-3 h-3 rounded-full ${modelsLoaded ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
                     <span className="text-slate-700 text-sm font-medium">
-                      Models: {modelsLoaded ? "✅ Loaded" : "⏳ Loading..."}
+                      Models: {modelsLoaded ? '✅ Loaded' : '⏳ Loading...'}
                     </span>
                   </div>
-
-                  {referencePeople.map((person) => (
-                    <div
-                      key={person.name}
-                      className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3"
-                    >
-                      <div
-                        className={`w-3 h-3 rounded-full ${
-                          person.loaded ? "bg-green-500" : "bg-red-500"
-                        } animate-pulse`}
-                      ></div>
-                      <span className="text-slate-700 text-sm font-medium">
-                        {person.name}:{" "}
-                        {person.loaded ? "✅ Ready" : "⏳ Loading..."}
-                      </span>
-                    </div>
-                  ))}
-
+                  
                   <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
-                    <div
-                      className={`w-3 h-3 rounded-full ${
-                        isWebcamStarted ? "bg-green-500" : "bg-gray-400"
-                      } ${isWebcamStarted ? "animate-pulse" : ""}`}
-                    ></div>
+                    <div className={`w-3 h-3 rounded-full ${facesLoaded ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
                     <span className="text-slate-700 text-sm font-medium">
-                      Camera: {isWebcamStarted ? "🎥 Active" : "📷 Inactive"}
+                      Faces: {facesLoaded ? `✅ ${dbPersons.length} Loaded` : '⏳ Loading...'}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
+                    <div className={`w-3 h-3 rounded-full ${isWebcamStarted ? 'bg-green-500' : 'bg-gray-400'} ${isWebcamStarted ? 'animate-pulse' : ''}`}></div>
+                    <span className="text-slate-700 text-sm font-medium">
+                      Camera: {isWebcamStarted ? '🎥 Active' : '📷 Inactive'}
                     </span>
                   </div>
                 </div>
-
-                {!isWebcamStarted && modelsLoaded && referenceImageLoaded && (
+                {!isWebcamStarted && modelsLoaded && facesLoaded && (
                   <button
                     onClick={startVideo}
                     className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg"
@@ -524,139 +325,7 @@ export default function Home() {
                     🎥 Start Camera
                   </button>
                 )}
-
-                {isWebcamStarted && (
-                  <div className="flex flex-col sm:flex-row justify-center gap-3 mb-6">
-                    <button
-                      onClick={() => setMode("recognition")}
-                      className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 ${
-                        mode === "recognition"
-                          ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg"
-                          : "bg-white/70 text-slate-700 hover:bg-white/90 border border-blue-200"
-                      }`}
-                    >
-                      🔍 Recognition Mode
-                    </button>
-                    <button
-                      onClick={() => setMode("registration")}
-                      className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 ${
-                        mode === "registration"
-                          ? "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg"
-                          : "bg-white/70 text-slate-700 hover:bg-white/90 border border-green-200"
-                      }`}
-                    >
-                      ➕ Add New Face
-                    </button>
-                    <button
-                      onClick={() => setDebugMode(!debugMode)}
-                      className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 ${
-                        debugMode
-                          ? "bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg"
-                          : "bg-white/70 text-slate-700 hover:bg-white/90 border border-purple-200"
-                      }`}
-                    >
-                      {debugMode ? "🔬 Debug ON" : "🔬 Debug OFF"}
-                    </button>
-                  </div>
-                )}
               </div>
-
-              {/* Registered People Display */}
-              {referencePeople.some((p) => p.loaded) && (
-                <div className="bg-gradient-to-r from-blue-50 to-green-50 p-4 sm:p-6 rounded-2xl mb-6 border border-blue-100">
-                  <h4 className="text-lg font-bold mb-4 text-slate-800 flex items-center">
-                    👥 Registered People
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {referencePeople
-                      .filter((p) => p.loaded)
-                      .map((person) => (
-                        <div
-                          key={person.name}
-                          className="bg-white/80 backdrop-blur-sm p-4 rounded-xl border border-blue-200 shadow-sm"
-                        >
-                          <div className="font-bold text-slate-800 flex items-center">
-                            <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                            {person.name}
-                          </div>
-                          <div className="text-sm text-slate-600 mt-1">
-                            ✅ Reference Ready
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Registration Form */}
-              {mode === "registration" && isWebcamStarted && (
-                <div className="bg-gradient-to-r from-green-50 to-blue-50 p-4 sm:p-6 rounded-2xl mb-6 border border-green-100">
-                  <h4 className="text-lg font-bold mb-4 text-slate-800 flex items-center">
-                    ➕ Register New Person
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-2">
-                        Name (required)
-                      </label>
-                      <input
-                        type="text"
-                        value={newPersonName}
-                        onChange={(e) => setNewPersonName(e.target.value)}
-                        className="w-full px-4 py-3 border-2 border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/70 backdrop-blur-sm"
-                        placeholder="Enter person's name"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-bold text-slate-700 mb-2">
-                        Context (optional)
-                      </label>
-                      <input
-                        type="text"
-                        value={newPersonContext}
-                        onChange={(e) => setNewPersonContext(e.target.value)}
-                        className="w-full px-4 py-3 border-2 border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/70 backdrop-blur-sm"
-                        placeholder="e.g., Daughter, Son, Caregiver, Friend"
-                      />
-                    </div>
-                  </div>
-                  <button
-                    onClick={registerFace}
-                    disabled={!newPersonName.trim() || isRegistering}
-                    className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:from-gray-400 disabled:to-gray-500 text-white font-bold py-3 px-6 rounded-xl disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl"
-                  >
-                    {isRegistering ? "⏳ Registering..." : "✅ Register Face"}
-                  </button>
-                </div>
-              )}
-
-              {/* Stored Faces List */}
-              {storedFaces.length > 0 && (
-                <div className="bg-gradient-to-r from-purple-50 to-pink-50 p-4 sm:p-6 rounded-2xl mb-6 border border-purple-100">
-                  <h4 className="text-lg font-bold mb-4 text-slate-800 flex items-center">
-                    📝 Dynamic Registered People
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {storedFaces.map((face, index) => (
-                      <div
-                        key={index}
-                        className="bg-white/80 backdrop-blur-sm p-4 rounded-xl border border-purple-200 shadow-sm"
-                      >
-                        <div className="font-bold text-slate-800 flex items-center">
-                          <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
-                          {face.name}
-                        </div>
-                        {face.context && (
-                          <div className="text-sm text-slate-600 mt-1">
-                            {face.context}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Camera Container */}
               <div className="relative flex justify-center">
                 <div className="relative">
@@ -678,35 +347,11 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="text-center bg-white/50 rounded-2xl p-4 border border-blue-100">
+              <div className="text-center bg-white/50 rounded-2xl p-4 border border-blue-100 mt-6">
                 <p className="text-sm sm:text-base text-slate-700">
-                  {mode === "recognition" ? (
-                    <>
-                      <span className="font-bold">🔍 Recognition Mode:</span>{" "}
-                      The system will detect Thomas, Parth, or unknown people.
-                      <br />
-                      <span className="text-green-600 font-semibold">
-                        Green text = Known person
-                      </span>
-                      ,{" "}
-                      <span className="text-red-500 font-semibold">
-                        Red text = Unknown person
-                      </span>
-                      <br />
-                      <span className="text-blue-600">
-                        Multiple people can be detected simultaneously
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="font-bold">➕ Registration Mode:</span>{" "}
-                      Position yourself in frame and click "Register Face".
-                      <br />
-                      <span className="text-amber-600">
-                        Ensure only one person is visible for best results.
-                      </span>
-                    </>
-                  )}
+                  <span className="font-bold">🔍 Recognition Mode:</span> The system will identify registered individuals.
+                  <br />
+                  <span className="text-green-600 font-semibold">Green text = Known person</span>, <span className="text-red-500 font-semibold">Red text = Unknown person</span>
                 </p>
               </div>
             </div>

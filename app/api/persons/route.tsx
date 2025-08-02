@@ -1,19 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
-import { getS3PresignedUrl } from "@/lib/supabase/s3";
+import { getS3PresignedUrl } from "../../../lib/supabase/s3";
+import { getAuthenticatedUser } from "../../../lib/auth"; // Import authentication helper
 
 const prisma = new PrismaClient();
 
 export async function GET(request: NextRequest) {
   try {
+    // Authenticate the user first
+    const authenticatedUser = await getAuthenticatedUser();
+    if (!authenticatedUser) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
 
-    if (!userId) {
-      return NextResponse.json(
-        { error: "User ID is required" },
-        { status: 400 }
-      );
+    // Ensure the authenticated user is requesting their own data
+    if (!userId || userId !== authenticatedUser.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const persons = await prisma.person.findMany({
@@ -44,9 +49,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(personsWithPresignedUrls);
   } catch (error) {
-    console.error("Error fetching persons:", error);
+    console.error("Error fetching persons:", error); // Detailed logging
     return NextResponse.json(
-      { error: "Failed to fetch persons" },
+      { error: "Failed to fetch persons", details: (error as Error).message },
       { status: 500 }
     );
   }
