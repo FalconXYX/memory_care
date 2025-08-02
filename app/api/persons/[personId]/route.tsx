@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import prisma from '@/lib/prisma';
 import { getAuthenticatedUser } from "@/lib/auth";
 import {
   getS3PresignedUrl,
   uploadFileToS3,
   deleteFileFromS3,
 } from "@/lib/supabase/s3";
-
-const prisma = new PrismaClient();
 
 // GET handler to fetch a person's details
 export async function GET(

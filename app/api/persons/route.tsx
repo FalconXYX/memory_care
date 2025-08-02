@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import prisma from '@/lib/prisma';
 import { getS3PresignedUrl } from "@/lib/supabase/s3";
-
-const prisma = new PrismaClient();
 
 export async function GET(request: NextRequest) {
   try {

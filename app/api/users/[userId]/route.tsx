@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
 import { getAuthenticatedUser } from "@/lib/auth"; // Correctly import the helper
-
-const prisma = new PrismaClient();
+import prisma from '@/lib/prisma';
 
 export async function GET(
   request: Request,
