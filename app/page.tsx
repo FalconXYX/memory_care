@@ -228,7 +228,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
             scoreThreshold: 0.5,
           })
         )
-        .withFaceLandmarks()
+        .withFaceLandmarks(true) // Use tiny landmarks model
         .withFaceDescriptors();
 
       const ctx = canvas.getContext("2d");
@@ -396,7 +396,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
       setDetectedPersons(currentDetectedPersons);
     };
 
-    detectionIntervalRef.current = setInterval(detectFaces, 500); // Reduced from 100ms to 500ms
+    detectionIntervalRef.current = setInterval(detectFaces, 800); // Increased from 500ms to 800ms for better performance
   };
 
   // Load face-api models and fetch faces from DB
@@ -405,9 +405,9 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
 
     const loadAssets = async () => {
       try {
-        // Load face-api models
+        // Load face-api models - using fastest/smallest models
         await faceapi.nets.tinyFaceDetector.loadFromUri("/models");
-        await faceapi.nets.faceLandmark68Net.loadFromUri("/models");
+        await faceapi.nets.faceLandmark68TinyNet.loadFromUri("/models"); // Using tiny landmarks model
         await faceapi.nets.faceRecognitionNet.loadFromUri("/models");
         setModelsLoaded(true);
 
@@ -478,7 +478,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                   scoreThreshold: 0.5,
                 })
               )
-              .withFaceLandmarks()
+              .withFaceLandmarks(true) // Use tiny landmarks model
               .withFaceDescriptor();
 
             if (detection) {
