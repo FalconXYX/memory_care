@@ -120,45 +120,9 @@ export default function GeminiTTSTest() {
           setError('Failed to process audio data from Gemini Live');
         }
       } else {
-        // Handle fallback text response (Standard API)
-        const data = await response.json();
-        
-        if (data.fallback && data.optimizedText) {
-          setStatusMessage('🗣️ Using fallback text-to-speech (Gemini Live API unavailable)...');
-          
-          // Use Web Speech API for fallback TTS
-          if ('speechSynthesis' in window) {
-            const utterance = new SpeechSynthesisUtterance(data.optimizedText);
-            utterance.rate = data.ttsConfig?.rate || 0.9;
-            utterance.pitch = data.ttsConfig?.pitch || 1.0;
-            utterance.volume = data.ttsConfig?.volume || 1.0;
-            
-            utterance.onstart = () => {
-              setStatusMessage('🎵 Playing optimized text with Web Speech API!');
-            };
-            
-            utterance.onend = () => {
-              setStatusMessage('✅ Fallback speech completed');
-            };
-            
-            utterance.onerror = (event) => {
-              console.error('Speech synthesis error:', event);
-              setError('Speech synthesis failed');
-              setStatusMessage('');
-            };
-            
-            speechSynthesis.speak(utterance);
-            
-            // Show the optimized text
-            console.log('Original text:', data.originalText);
-            console.log('Optimized text:', data.optimizedText);
-          } else {
-            setError('Speech synthesis not supported in this browser');
-          }
-        } else {
-          // Handle error response
-          throw new Error(data.error || 'Unexpected response format');
-        }
+        // Handle error response
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Unexpected response format');
       }
 
     } catch (err) {

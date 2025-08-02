@@ -1,6 +1,6 @@
 {
   "functions": {
-    "app/api/**/*.js": {
+    "app/api/**/*.ts": {
       "includeFiles": "node_modules/@google/genai/**",
       "memory": 1024,
       "maxDuration": 30

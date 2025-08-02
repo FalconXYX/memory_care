@@ -4,28 +4,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase";
 import { useEffect, useRef, useState } from "react";
+import * as faceapi from "face-api.js";
 import { AudioStreamer } from "@/lib/audio-streamer";
 import { audioContext } from "@/lib/audio-utils";
-
-// Dynamic import for face-api.js to avoid SSR issues
-let faceapi: any = null;
-
-// Helper function to check if we're in a browser environment
-const isBrowser = () => typeof window !== 'undefined';
-
-// Helper function to safely load face-api.js
-const loadFaceAPI = async () => {
-  if (!isBrowser()) {
-    throw new Error('Face API can only be loaded in browser environment');
-  }
-  
-  if (!faceapi) {
-    const module = await import('face-api.js');
-    faceapi = module;
-  }
-  
-  return faceapi;
-};
 
 export default function Home() {
   const { user, loading, signOut } = useAuth();
@@ -67,9 +48,6 @@ export default function Home() {
     box: { x: number; y: number; width: number; height: number };
     textColor: string;
   }>>([]);
-  
-  // Track face-api loading state
-  const [faceApiLoading, setFaceApiLoading] = useState(false);
   
   // Cooldown configuration in minutes
   const PERSON_COOLDOWN_MINUTES = 5;
@@ -190,7 +168,6 @@ export default function Home() {
       const contentType = response.headers.get('Content-Type');
       
       if (contentType?.includes('audio/pcm')) {
-        // Handle audio response (Live API)
         const pcmArrayBuffer = await response.arrayBuffer();
         setAssistantStatus(`🎵 Playing description for ${person.name}`);
         
@@ -202,40 +179,6 @@ export default function Home() {
           audioStreamerRef.current.addPCM16(pcmData);
         } else {
           throw new Error('Audio system not initialized');
-        }
-      } else {
-        // Handle fallback text response (Standard API)
-        const data = await response.json();
-        
-        if (data.fallback && data.optimizedText) {
-          // Use Web Speech API for fallback TTS
-          setAssistantStatus(`🗣️ Speaking description for ${person.name} (fallback)`);
-          
-          if ('speechSynthesis' in window) {
-            const utterance = new SpeechSynthesisUtterance(data.optimizedText);
-            utterance.rate = data.ttsConfig?.rate || 0.9;
-            utterance.pitch = data.ttsConfig?.pitch || 1.0;
-            utterance.volume = data.ttsConfig?.volume || 1.0;
-            
-            utterance.onend = () => {
-              setIsAssistantSpeaking(false);
-              setAssistantStatus('');
-              setLastSpeechTime(Date.now());
-            };
-            
-            utterance.onerror = (event) => {
-              console.error('Speech synthesis error:', event);
-              setIsAssistantSpeaking(false);
-              setAssistantStatus('❌ Speech synthesis failed');
-              setTimeout(() => setAssistantStatus(''), 3000);
-            };
-            
-            speechSynthesis.speak(utterance);
-          } else {
-            throw new Error('Speech synthesis not supported in this browser');
-          }
-        } else {
-          throw new Error('Unexpected response format');
         }
       }
 
@@ -258,37 +201,36 @@ export default function Home() {
       const video = videoRef.current;
       const canvas = canvasRef.current;
 
-      if (!video || !canvas || !faceapi) return;
+      if (!video || !canvas) return;
 
-      try {
-        const detections = await faceapi
-          .detectAllFaces(
-            video,
-            new faceapi.TinyFaceDetectorOptions({
-              inputSize: 416,
-              scoreThreshold: 0.5,
-            })
-          )
-          .withFaceLandmarks()
-          .withFaceDescriptors();
+      const detections = await faceapi
+        .detectAllFaces(
+          video,
+          new faceapi.TinyFaceDetectorOptions({
+            inputSize: 416,
+            scoreThreshold: 0.5,
+          })
+        )
+        .withFaceLandmarks()
+        .withFaceDescriptors();
 
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
 
-        const displaySize = { width: video.width, height: video.height };
-        const resizedDetections = faceapi.resizeResults(detections, displaySize);
+      const displaySize = { width: video.width, height: video.height };
+      const resizedDetections = faceapi.resizeResults(detections, displaySize);
 
-        // Collect detected persons for overlay buttons
-        const currentDetectedPersons: Array<{
-          person: any;
-          box: { x: number; y: number; width: number; height: number };
-          textColor: string;
-        }> = [];
+      // Collect detected persons for overlay buttons
+      const currentDetectedPersons: Array<{
+        person: any;
+        box: { x: number; y: number; width: number; height: number };
+        textColor: string;
+      }> = [];
 
-        if (faceMatcher && resizedDetections.length > 0) {
-          resizedDetections.forEach((detection: any) => {
+      if (faceMatcher && resizedDetections.length > 0) {
+        resizedDetections.forEach((detection) => {
           const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
           const { label, distance } = bestMatch;
 
@@ -412,7 +354,7 @@ export default function Home() {
               const landmarks = detection.landmarks;
               if (landmarks) {
                 ctx.fillStyle = textColor;
-                landmarks.positions.forEach((point: any) => {
+                landmarks.positions.forEach((point) => {
                   ctx.beginPath();
                   ctx.arc(point.x, point.y, 1, 0, 2 * Math.PI);
                   ctx.fill();
@@ -435,11 +377,6 @@ export default function Home() {
 
       // Update detected persons state for overlay buttons
       setDetectedPersons(currentDetectedPersons);
-    } catch (error) {
-      console.error('Face detection error:', error);
-      // Clear detected persons on error
-      setDetectedPersons([]);
-    }
     };
 
     detectionIntervalRef.current = setInterval(detectFaces, 500); // Reduced from 100ms to 500ms
@@ -447,49 +384,31 @@ export default function Home() {
 
   // Load face-api models and fetch faces from DB
   useEffect(() => {
-    if (!user || !isBrowser()) return;
+    if (!user) return;
 
     const loadAssets = async () => {
       try {
-        setFaceApiLoading(true);
-        
-        // Dynamic import of face-api.js to avoid SSR issues
-        console.log('Loading face-api.js...');
-        faceapi = await loadFaceAPI();
-        console.log('face-api.js loaded successfully');
-
-        console.log('Loading face-api models...');
         // Load face-api models
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri("/models"),
-          faceapi.nets.faceLandmark68Net.loadFromUri("/models"),
-          faceapi.nets.faceRecognitionNet.loadFromUri("/models")
-        ]);
-        
-        console.log('Face-api models loaded successfully');
+        await faceapi.nets.tinyFaceDetector.loadFromUri("/models");
+        await faceapi.nets.faceLandmark68Net.loadFromUri("/models");
+        await faceapi.nets.faceRecognitionNet.loadFromUri("/models");
         setModelsLoaded(true);
 
         // Fetch persons from the database
-        console.log('Fetching persons from database...');
         const response = await fetch(`/api/persons?userId=${user.id}`);
         if (!response.ok) {
           throw new Error("Failed to fetch persons from the database.");
         }
         const persons = await response.json();
         setDbPersons(persons);
-        console.log(`Loaded ${persons.length} persons from database`);
 
         // Load faces and create a face matcher
         await loadFacesFromDB(persons);
-        
-        console.log('Assets loaded successfully');
       } catch (err) {
-        console.error('Error loading assets:', err);
         setError(
-          `Failed to load face recognition system: ${err instanceof Error ? err.message : 'Unknown error'}. Please refresh the page.`
+          "Failed to load assets. Please check the console for more details."
         );
-      } finally {
-        setFaceApiLoading(false);
+        console.error(err);
       }
     };
 
@@ -522,7 +441,7 @@ export default function Home() {
 
   // Load faces from the database and create a face matcher
   const loadFacesFromDB = async (persons: any[]) => {
-    if (persons.length === 0 || !faceapi) {
+    if (persons.length === 0) {
       setFacesLoaded(true);
       return;
     }
@@ -560,15 +479,15 @@ export default function Home() {
 
       const validDescriptors = labeledDescriptors.filter(
         (d) => d !== null
-      ) as any[];
+      ) as faceapi.LabeledFaceDescriptors[];
 
       if (validDescriptors.length > 0) {
         const matcher = new faceapi.FaceMatcher(validDescriptors, 0.6);
         setFaceMatcher(matcher);
       }
     } catch (err) {
-      console.error("Failed to build face matcher from database:", err);
       setError("Failed to build face matcher from database.");
+      console.error(err);
     } finally {
       setFacesLoaded(true);
     }
@@ -592,7 +511,7 @@ export default function Home() {
 
   // Detect faces in real-time
   const handleVideoPlay = () => {
-    if (!videoRef.current || !canvasRef.current || !modelsLoaded || !faceapi) return;
+    if (!videoRef.current || !canvasRef.current || !modelsLoaded) return;
 
     const canvas = canvasRef.current;
     const video = videoRef.current;
@@ -846,16 +765,7 @@ export default function Home() {
                     </div>
                   )}
                 </div>
-                {faceApiLoading && (
-                  <div className="text-center mb-4">
-                    <div className="inline-flex items-center px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-200 border-t-blue-500 mr-2"></div>
-                      <span className="text-blue-700 text-sm font-medium">Loading face recognition system...</span>
-                    </div>
-                  </div>
-                )}
-                
-                {!isWebcamStarted && modelsLoaded && facesLoaded && !faceApiLoading && (
+                {!isWebcamStarted && modelsLoaded && facesLoaded && (
                   <button
                     onClick={startVideo}
                     className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg"

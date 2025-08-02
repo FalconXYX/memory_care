@@ -1,3 +1,4 @@
+import { GoogleGenAI, LiveConnectConfig, LiveCallbacks, Modality } from '@google/genai';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
@@ -19,46 +20,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // For now, skip Live API and go directly to standard API in production
-    // to avoid the b.mask function error
-    const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL;
-    
-    if (isProduction) {
-      console.log('Production environment detected, using standard API');
-      return await handleWithStandardAPI(text, apiKey);
-    }
-
-    // Try to use the Live API first, fall back to standard API
-    try {
-      return await handleWithLiveAPI(text, apiKey);
-    } catch (liveApiError) {
-      console.warn('Live API failed, falling back to standard API:', liveApiError);
-      return await handleWithStandardAPI(text, apiKey);
-    }
-
-  } catch (error) {
-    console.error('Gemini TTS error:', error);
-    
-    return NextResponse.json(
-      { 
-        error: error instanceof Error ? error.message : 'Failed to generate speech',
-        details: 'Please check server logs for more information'
-      },
-      { status: 500 }
-    );
-  }
-}
-
-async function handleWithLiveAPI(text: string, apiKey: string) {
-  try {
-    // Dynamic import to avoid SSR issues
-    const { GoogleGenAI, Modality } = await import('@google/genai');
-    
     // Initialize Gemini Live API client
     const client = new GoogleGenAI({ apiKey });
     
     // Configuration for Gemini 2.0 Flash Live with audio output
-    const config = {
+    const config: LiveConnectConfig = {
       responseModalities: [Modality.AUDIO],
       speechConfig: {
         voiceConfig: {
@@ -79,22 +45,22 @@ async function handleWithLiveAPI(text: string, apiKey: string) {
     let hasReceivedAudio = false;
 
     // Set up event callbacks
-    const callbacks = {
+    const callbacks: LiveCallbacks = {
       onopen: () => {
         console.log('Live API connection opened');
       },
-      onmessage: (message: any) => {
+      onmessage: (message) => {
         // Handle incoming messages and look for audio data
         if (message.serverContent?.modelTurn) {
           const parts = message.serverContent.modelTurn.parts || [];
           
           // Look for audio parts
           const audioParts = parts.filter(
-            (p: any) => p.inlineData && p.inlineData.mimeType?.startsWith("audio/pcm")
+            (p) => p.inlineData && p.inlineData.mimeType?.startsWith("audio/pcm")
           );
           
           // Process audio data
-          audioParts.forEach((part: any) => {
+          audioParts.forEach((part) => {
             if (part.inlineData?.data) {
               // Convert base64 to ArrayBuffer
               const audioData = Uint8Array.from(atob(part.inlineData.data), c => c.charCodeAt(0));
@@ -108,11 +74,11 @@ async function handleWithLiveAPI(text: string, apiKey: string) {
           sessionComplete = true;
         }
       },
-      onerror: (error: any) => {
+      onerror: (error) => {
         console.error('Live API error:', error);
         sessionComplete = true;
       },
-      onclose: (event: any) => {
+      onclose: (event) => {
         console.log('Live API connection closed');
         sessionComplete = true;
       }
@@ -144,7 +110,13 @@ async function handleWithLiveAPI(text: string, apiKey: string) {
 
     // Check if we have audio chunks
     if (audioChunks.length === 0 || !hasReceivedAudio) {
-      throw new Error('No audio received from Gemini Live API');
+      return NextResponse.json(
+        { 
+          error: 'No audio received from Gemini Live API',
+          details: 'The Live API responded but did not include audio data.'
+        },
+        { status: 500 }
+      );
     }
 
     // Combine all audio chunks into a single buffer
@@ -167,37 +139,16 @@ async function handleWithLiveAPI(text: string, apiKey: string) {
         'Cache-Control': 'no-cache',
       },
     });
+
   } catch (error) {
-    console.error('Live API specific error:', error);
-    throw error; // Re-throw to trigger fallback
+    console.error('Gemini Live TTS error:', error);
+    
+    return NextResponse.json(
+      { 
+        error: error instanceof Error ? error.message : 'Failed to generate speech with Gemini Live',
+        details: 'Please ensure you have access to Gemini 2.0 Flash Live model'
+      },
+      { status: 500 }
+    );
   }
-}
-
-async function handleWithStandardAPI(text: string, apiKey: string) {
-  // Fallback to standard Generative AI API (text-only)
-  const { GoogleGenerativeAI } = await import('@google/generative-ai');
-  
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
-
-  // Optimize text for speech synthesis
-  const prompt = `Please rewrite the following text to be more natural and conversational for text-to-speech synthesis. Add appropriate pauses and improve the flow, but keep the core message intact: "${text}"`;
-
-  const result = await model.generateContent(prompt);
-  const optimizedText = result.response.text();
-
-  // Return optimized text instead of audio
-  return NextResponse.json({
-    success: true,
-    originalText: text,
-    optimizedText: optimizedText,
-    message: "Text optimized by Gemini for natural speech synthesis (Live API unavailable)",
-    fallback: true,
-    ttsConfig: {
-      rate: 0.9,
-      pitch: 1.0,
-      volume: 1.0,
-      voice: "en-US"
-    }
-  });
 }
