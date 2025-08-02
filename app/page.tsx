@@ -25,6 +25,9 @@ export default function Home() {
   }>>([]);
   const [facesLoaded, setFacesLoaded] = useState(false);
   const [debugMode, setDebugMode] = useState(false)
+  const [displayMode, setDisplayMode] = useState<'name' | 'nameBox' | 'nameLandmarks'>(
+    'name'
+  )
 
   // Load face-api models and fetch faces from DB
   useEffect(() => {
@@ -176,12 +179,59 @@ export default function Home() {
 
           if (ctx) {
             const box = detection.detection.box;
-            ctx.fillStyle = textColor;
-            ctx.font = "20px Arial";
-            ctx.strokeStyle = "black";
-            ctx.lineWidth = 3;
-            ctx.strokeText(displayText, box.x, box.y - 10);
-            ctx.fillText(displayText, box.x, box.y - 10);
+
+            // Mode 1: Just name appearing
+            if (displayMode === 'name') {
+              ctx.fillStyle = textColor;
+              ctx.font = "20px Arial";
+              ctx.strokeStyle = "black";
+              ctx.lineWidth = 3;
+              ctx.strokeText(displayText, box.x, box.y - 10);
+              ctx.fillText(displayText, box.x, box.y - 10);
+            }
+            
+            // Mode 2: Name + box appearing
+            else if (displayMode === 'nameBox') {
+              // Draw bounding box
+              ctx.strokeStyle = textColor;
+              ctx.lineWidth = 2;
+              ctx.strokeRect(box.x, box.y, box.width, box.height);
+              
+              // Draw text
+              ctx.fillStyle = textColor;
+              ctx.font = "20px Arial";
+              ctx.strokeStyle = "black";
+              ctx.lineWidth = 3;
+              ctx.strokeText(displayText, box.x, box.y - 10);
+              ctx.fillText(displayText, box.x, box.y - 10);
+            }
+            
+            // Mode 3: Name + box + face landmarks
+            else if (displayMode === 'nameLandmarks') {
+              // Draw bounding box
+              ctx.strokeStyle = textColor;
+              ctx.lineWidth = 2;
+              ctx.strokeRect(box.x, box.y, box.width, box.height);
+              
+              // Draw landmarks
+              const landmarks = detection.landmarks;
+              if (landmarks) {
+                ctx.fillStyle = textColor;
+                landmarks.positions.forEach((point) => {
+                  ctx.beginPath();
+                  ctx.arc(point.x, point.y, 1, 0, 2 * Math.PI);
+                  ctx.fill();
+                });
+              }
+              
+              // Draw text
+              ctx.fillStyle = textColor;
+              ctx.font = "20px Arial";
+              ctx.strokeStyle = "black";
+              ctx.lineWidth = 3;
+              ctx.strokeText(displayText, box.x, box.y - 10);
+              ctx.fillText(displayText, box.x, box.y - 10);
+            }
           }
         });
       }
@@ -322,6 +372,44 @@ export default function Home() {
                     </span>
                   </div>
                 </div>
+                
+                {/* Display Mode Toggle */}
+                <div className="mb-6">
+                  <h4 className="text-sm font-semibold text-slate-700 mb-3 text-center">🎯 Display Mode</h4>
+                  <div className="flex flex-col sm:flex-row justify-center gap-2 sm:gap-3">
+                    <button
+                      onClick={() => setDisplayMode('name')}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        displayMode === 'name'
+                          ? 'bg-blue-500 text-white shadow-lg'
+                          : 'bg-white/70 text-slate-700 hover:bg-blue-100'
+                      }`}
+                    >
+                      📝 Name Only
+                    </button>
+                    <button
+                      onClick={() => setDisplayMode('nameBox')}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        displayMode === 'nameBox'
+                          ? 'bg-blue-500 text-white shadow-lg'
+                          : 'bg-white/70 text-slate-700 hover:bg-blue-100'
+                      }`}
+                    >
+                      📦 Name + Box
+                    </button>
+                    <button
+                      onClick={() => setDisplayMode('nameLandmarks')}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        displayMode === 'nameLandmarks'
+                          ? 'bg-blue-500 text-white shadow-lg'
+                          : 'bg-white/70 text-slate-700 hover:bg-blue-100'
+                      }`}
+                    >
+                      🎯 Name + Box + Landmarks
+                    </button>
+                  </div>
+                </div>
+                
                 {!isWebcamStarted && modelsLoaded && facesLoaded && (
                   <button
                     onClick={startVideo}
@@ -356,7 +444,13 @@ export default function Home() {
                 <p className="text-sm sm:text-base text-slate-700">
                   <span className="font-bold">🔍 Recognition Mode:</span> The system will identify registered individuals.
                   <br />
-                  <span className="text-green-600 font-semibold">Green text = Known person</span>, <span className="text-red-500 font-semibold">Red text = Unknown person</span>
+                  <span className="text-green-600 font-semibold">Green = Known person</span>, <span className="text-red-500 font-semibold">Red = Unknown person</span>
+                  <br />
+                  <span className="font-bold">🎯 Current Display:</span> {
+                    displayMode === 'name' ? '📝 Names only' :
+                    displayMode === 'nameBox' ? '📦 Names with bounding boxes' :
+                    '🎯 Names, boxes, and facial landmarks'
+                  }
                 </p>
               </div>
             </div>
