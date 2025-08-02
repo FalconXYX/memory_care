@@ -13,6 +13,20 @@ let faceapi: any = null;
 // Helper function to check if we're in a browser environment
 const isBrowser = () => typeof window !== 'undefined';
 
+// Helper function to safely load face-api.js
+const loadFaceAPI = async () => {
+  if (!isBrowser()) {
+    throw new Error('Face API can only be loaded in browser environment');
+  }
+  
+  if (!faceapi) {
+    const module = await import('face-api.js');
+    faceapi = module;
+  }
+  
+  return faceapi;
+};
+
 export default function Home() {
   const { user, loading, signOut } = useAuth();
 
@@ -405,15 +419,9 @@ export default function Home() {
         setFaceApiLoading(true);
         
         // Dynamic import of face-api.js to avoid SSR issues
-        if (!faceapi) {
-          console.log('Loading face-api.js...');
-          faceapi = await import('face-api.js');
-          console.log('face-api.js loaded successfully');
-        }
-
-        if (!faceapi) {
-          throw new Error('Failed to load face-api.js module');
-        }
+        console.log('Loading face-api.js...');
+        faceapi = await loadFaceAPI();
+        console.log('face-api.js loaded successfully');
 
         console.log('Loading face-api models...');
         // Load face-api models
