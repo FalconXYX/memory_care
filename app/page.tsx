@@ -6,16 +6,14 @@ import { createClient } from "@/lib/supabase";
 import { useEffect, useRef, useState } from "react";
 import * as faceapi from "face-api.js";
 
-export default function Home() {
-  const { user, loading, signOut } = useAuth();
-
-  // Face detection states
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [modelsLoaded, setModelsLoaded] = useState(false)
-  const [isWebcamStarted, setIsWebcamStarted] = useState(false)
-  const [error, setError] = useState<string>('')
-  const [faceMatcher, setFaceMatcher] = useState<any>(null)
+const CameraView = ({ isFullscreen, onToggleFullscreen }: { isFullscreen: boolean, onToggleFullscreen: (isFs: boolean) => void }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const { user } = useAuth();
+  const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [isWebcamStarted, setIsWebcamStarted] = useState(false);
+  const [error, setError] = useState<string>('');
+  const [faceMatcher, setFaceMatcher] = useState<any>(null);
   const [dbPersons, setDbPersons] = useState<Array<{
     id: string;
     name: string;
@@ -24,43 +22,28 @@ export default function Home() {
     presignedImageUrl?: string;
   }>>([]);
   const [facesLoaded, setFacesLoaded] = useState(false);
-  const [debugMode, setDebugMode] = useState(false)
-  const [displayMode, setDisplayMode] = useState<'name' | 'nameBox' | 'nameLandmarks'>(
-    'name'
-  )
-  const [isFullscreen, setIsFullscreen] = useState(true)
+  const [displayMode, setDisplayMode] = useState<'name' | 'nameBox' | 'nameLandmarks'>('name');
 
-  // Load face-api models and fetch faces from DB
+  // Load assets and start camera
   useEffect(() => {
     if (!user) return;
 
     const loadAssets = async () => {
       try {
-        // Load face-api models
         await faceapi.nets.tinyFaceDetector.loadFromUri("/models");
         await faceapi.nets.faceLandmark68Net.loadFromUri("/models");
         await faceapi.nets.faceRecognitionNet.loadFromUri("/models");
         setModelsLoaded(true);
 
-        // Fetch persons from the database
         const response = await fetch(`/api/persons?userId=${user.id}`);
-        if (!response.ok) {
-          throw new Error("Failed to fetch persons from the database.");
-        }
+        if (!response.ok) throw new Error("Failed to fetch persons.");
         const persons = await response.json();
         setDbPersons(persons);
 
-        // Load faces and create a face matcher
         await loadFacesFromDB(persons);
-        
-        // Auto-start camera after models and faces are loaded
-        setTimeout(() => {
-          startVideo();
-        }, 500);
+        startVideo();
       } catch (err) {
-        setError(
-          "Failed to load assets. Please check the console for more details."
-        );
+        setError("Failed to load assets.");
         console.error(err);
       }
     };
@@ -68,35 +51,23 @@ export default function Home() {
     loadAssets();
   }, [user]);
 
-  // Load faces from the database and create a face matcher
   const loadFacesFromDB = async (persons: any[]) => {
     if (persons.length === 0) {
       setFacesLoaded(true);
       return;
     }
-
     try {
       const labeledDescriptors = await Promise.all(
         persons.map(async (person) => {
           if (!person.presignedImageUrl) return null;
-
           try {
             const img = await faceapi.fetchImage(person.presignedImageUrl);
             const detection = await faceapi
-              .detectSingleFace(
-                img,
-                new faceapi.TinyFaceDetectorOptions({
-                  inputSize: 416,
-                  scoreThreshold: 0.5,
-                })
-              )
+              .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 }))
               .withFaceLandmarks()
               .withFaceDescriptor();
-
             if (detection) {
-              return new faceapi.LabeledFaceDescriptors(person.name, [
-                detection.descriptor,
-              ]);
+              return new faceapi.LabeledFaceDescriptors(person.name, [detection.descriptor]);
             }
             return null;
           } catch (e) {
@@ -105,258 +76,197 @@ export default function Home() {
           }
         })
       );
-
-      const validDescriptors = labeledDescriptors.filter(
-        (d) => d !== null
-      ) as faceapi.LabeledFaceDescriptors[];
-
+      const validDescriptors = labeledDescriptors.filter(d => d !== null) as faceapi.LabeledFaceDescriptors[];
       if (validDescriptors.length > 0) {
-        const matcher = new faceapi.FaceMatcher(validDescriptors, 0.6);
-        setFaceMatcher(matcher);
+        setFaceMatcher(new faceapi.FaceMatcher(validDescriptors, 0.6));
       }
     } catch (err) {
-      setError("Failed to build face matcher from database.");
+      setError("Failed to build face matcher.");
       console.error(err);
     } finally {
       setFacesLoaded(true);
     }
   };
 
-  // Start webcam
   const startVideo = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 720, height: 560 },
-      });
-
+      // Increased resolution for bigger camera size
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1920, height: 1080 } });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         setIsWebcamStarted(true);
       }
     } catch (err) {
-      setError("Failed to access webcam. Please allow camera permissions.");
+      setError("Failed to access webcam.");
     }
   };
 
-  // Detect faces in real-time
-  const handleVideoPlay = () => {
-    if (!videoRef.current || !canvasRef.current || !modelsLoaded) return;
-
-    const canvas = canvasRef.current;
-    const video = videoRef.current;
-
-    const displaySize = { width: video.width, height: video.height };
-    faceapi.matchDimensions(canvas, displaySize);
-
-    const detectFaces = async () => {
-      if (!video || !canvas) return;
-
-      const detections = await faceapi
-        .detectAllFaces(
-          video,
-          new faceapi.TinyFaceDetectorOptions({
-            inputSize: 416,
-            scoreThreshold: 0.5,
-          })
-        )
-        .withFaceLandmarks()
-        .withFaceDescriptors();
-
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-      }
-
-      const resizedDetections = faceapi.resizeResults(detections, displaySize);
-
-      if (faceMatcher && resizedDetections.length > 0) {
-        resizedDetections.forEach((detection) => {
-          const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
-          const { label, distance } = bestMatch;
-
-          let displayText = `Unknown (${(1 - distance).toFixed(2)})`;
-          let textColor = "#ff0000"; // Red for unknown
-
-          if (label !== "unknown") {
-            const person = dbPersons.find((p) => p.name === label);
-            displayText = `${person?.name} (${person?.relationship})`;
-            textColor = "#00ff00"; // Green for known
-          }
-
-          if (ctx) {
-            const box = detection.detection.box;
-
-            // Mode 1: Just name appearing
-            if (displayMode === 'name') {
-              ctx.fillStyle = textColor;
-              ctx.font = "20px Arial";
-              ctx.strokeStyle = "black";
-              ctx.lineWidth = 3;
-              ctx.strokeText(displayText, box.x, box.y - 10);
-              ctx.fillText(displayText, box.x, box.y - 10);
-            }
-            
-            // Mode 2: Name + box appearing
-            else if (displayMode === 'nameBox') {
-              // Draw bounding box
-              ctx.strokeStyle = textColor;
-              ctx.lineWidth = 2;
-              ctx.strokeRect(box.x, box.y, box.width, box.height);
-              
-              // Draw text
-              ctx.fillStyle = textColor;
-              ctx.font = "20px Arial";
-              ctx.strokeStyle = "black";
-              ctx.lineWidth = 3;
-              ctx.strokeText(displayText, box.x, box.y - 10);
-              ctx.fillText(displayText, box.x, box.y - 10);
-            }
-            
-            // Mode 3: Name + box + face landmarks
-            else if (displayMode === 'nameLandmarks') {
-              // Draw bounding box
-              ctx.strokeStyle = textColor;
-              ctx.lineWidth = 2;
-              ctx.strokeRect(box.x, box.y, box.width, box.height);
-              
-              // Draw landmarks
-              const landmarks = detection.landmarks;
-              if (landmarks) {
-                ctx.fillStyle = textColor;
-                landmarks.positions.forEach((point) => {
-                  ctx.beginPath();
-                  ctx.arc(point.x, point.y, 1, 0, 2 * Math.PI);
-                  ctx.fill();
-                });
-              }
-              
-              // Draw text
-              ctx.fillStyle = textColor;
-              ctx.font = "20px Arial";
-              ctx.strokeStyle = "black";
-              ctx.lineWidth = 3;
-              ctx.strokeText(displayText, box.x, box.y - 10);
-              ctx.fillText(displayText, box.x, box.y - 10);
-            }
-          }
-        });
-      }
-    };
-
-    const interval = setInterval(detectFaces, 100);
-
-    return () => clearInterval(interval);
-  };
-
-  // Continuous face detection that updates with display mode changes
   useEffect(() => {
     if (!isWebcamStarted || !videoRef.current || !canvasRef.current || !modelsLoaded) return;
 
-    const canvas = canvasRef.current;
     const video = videoRef.current;
+    const canvas = canvasRef.current;
+    
+    const setCanvasSize = () => {
+        if (!videoRef.current) return;
+        const videoEl = videoRef.current;
+        const container = videoEl.parentElement;
+        if (!container) return;
 
-    const displaySize = { width: video.width, height: video.height };
-    faceapi.matchDimensions(canvas, displaySize);
+        const { videoWidth, videoHeight } = videoEl;
+        const { clientWidth, clientHeight } = container;
+
+        const videoRatio = videoWidth / videoHeight;
+        const containerRatio = clientWidth / clientHeight;
+
+        let newWidth = clientWidth;
+        let newHeight = clientHeight;
+
+        if (videoRatio > containerRatio) {
+            newHeight = clientWidth / videoRatio;
+        } else {
+            newWidth = clientHeight * videoRatio;
+        }
+
+        canvas.width = newWidth;
+        canvas.height = newHeight;
+    }
+
+    const handleResize = () => {
+      setCanvasSize();
+    }
+
+    video.onloadedmetadata = () => {
+      setCanvasSize();
+    }
+    
+    window.addEventListener('resize', handleResize);
+
 
     const detectFaces = async () => {
-      if (!video || !canvas) return;
+      if (!video.srcObject || video.paused || video.ended) return;
+      
+      const displaySize = { width: canvas.width, height: canvas.height };
+      faceapi.matchDimensions(canvas, displaySize);
 
       const detections = await faceapi
-        .detectAllFaces(
-          video,
-          new faceapi.TinyFaceDetectorOptions({
-            inputSize: 416,
-            scoreThreshold: 0.5,
-          })
-        )
+        .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 }))
         .withFaceLandmarks()
         .withFaceDescriptors();
-
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-      }
-
+      
       const resizedDetections = faceapi.resizeResults(detections, displaySize);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       if (faceMatcher && resizedDetections.length > 0) {
-        resizedDetections.forEach((detection) => {
+        resizedDetections.forEach(detection => {
           const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
           const { label, distance } = bestMatch;
+          const person = dbPersons.find(p => p.name === label);
+          const displayText = label !== 'unknown' ? `${person?.name} (${person?.relationship})` : `Unknown (${(1 - distance).toFixed(2)})`;
+          const textColor = label !== 'unknown' ? '#00ff00' : '#ff0000';
+          const box = detection.detection.box;
 
-          let displayText = `Unknown (${(1 - distance).toFixed(2)})`;
-          let textColor = "#ff0000"; // Red for unknown
-
-          if (label !== "unknown") {
-            const person = dbPersons.find((p) => p.name === label);
-            displayText = `${person?.name} (${person?.relationship})`;
-            textColor = "#00ff00"; // Green for known
+          if (displayMode === 'nameBox' || displayMode === 'nameLandmarks') {
+            ctx.strokeStyle = textColor;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(box.x, box.y, box.width, box.height);
           }
-
-          if (ctx) {
-            const box = detection.detection.box;
-
-            // Mode 1: Just name appearing
-            if (displayMode === 'name') {
-              ctx.fillStyle = textColor;
-              ctx.font = "20px Arial";
-              ctx.strokeStyle = "black";
-              ctx.lineWidth = 3;
-              ctx.strokeText(displayText, box.x, box.y - 10);
-              ctx.fillText(displayText, box.x, box.y - 10);
-            }
-            
-            // Mode 2: Name + box appearing
-            else if (displayMode === 'nameBox') {
-              // Draw bounding box
-              ctx.strokeStyle = textColor;
-              ctx.lineWidth = 2;
-              ctx.strokeRect(box.x, box.y, box.width, box.height);
-              
-              // Draw text
-              ctx.fillStyle = textColor;
-              ctx.font = "20px Arial";
-              ctx.strokeStyle = "black";
-              ctx.lineWidth = 3;
-              ctx.strokeText(displayText, box.x, box.y - 10);
-              ctx.fillText(displayText, box.x, box.y - 10);
-            }
-            
-            // Mode 3: Name + box + face landmarks
-            else if (displayMode === 'nameLandmarks') {
-              // Draw bounding box
-              ctx.strokeStyle = textColor;
-              ctx.lineWidth = 2;
-              ctx.strokeRect(box.x, box.y, box.width, box.height);
-              
-              // Draw landmarks
-              const landmarks = detection.landmarks;
-              if (landmarks) {
-                ctx.fillStyle = textColor;
-                landmarks.positions.forEach((point) => {
-                  ctx.beginPath();
-                  ctx.arc(point.x, point.y, 1, 0, 2 * Math.PI);
-                  ctx.fill();
-                });
-              }
-              
-              // Draw text
-              ctx.fillStyle = textColor;
-              ctx.font = "20px Arial";
-              ctx.strokeStyle = "black";
-              ctx.lineWidth = 3;
-              ctx.strokeText(displayText, box.x, box.y - 10);
-              ctx.fillText(displayText, box.x, box.y - 10);
-            }
+          if (displayMode === 'nameLandmarks') {
+            const landmarks = detection.landmarks;
+            ctx.fillStyle = textColor;
+            landmarks.positions.forEach(point => {
+              ctx.beginPath();
+              ctx.arc(point.x, point.y, 2, 0, 2 * Math.PI);
+              ctx.fill();
+            });
           }
+          ctx.fillStyle = textColor;
+          ctx.font = "20px Arial";
+          ctx.strokeStyle = "black";
+          ctx.lineWidth = 3;
+          ctx.strokeText(displayText, box.x, box.y - 10);
+          ctx.fillText(displayText, box.x, box.y - 10);
         });
       }
     };
 
     const interval = setInterval(detectFaces, 100);
-
-    return () => clearInterval(interval);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('resize', handleResize);
+    }
   }, [isWebcamStarted, modelsLoaded, faceMatcher, displayMode, dbPersons]);
+
+  return (
+    <div className="relative w-full h-full bg-black flex items-center justify-center">
+      <video
+        ref={videoRef}
+        autoPlay
+        muted
+        playsInline
+        className="w-full h-full object-contain"
+      />
+      <canvas
+        ref={canvasRef}
+        className="absolute"
+      />
+      
+      {/* Overlaid UI */}
+      <div className="absolute inset-0 z-10 flex flex-col">
+        {isFullscreen ? (
+          <div className="absolute top-4 right-4">
+            <button onClick={() => onToggleFullscreen(false)} className="bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white p-3 rounded-full">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+        ) : (
+          <nav className="bg-white/80 backdrop-blur-sm shadow-sm">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex justify-between h-16 sm:h-20">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-green-500 rounded-xl flex items-center justify-center">
+                    <span className="text-white font-bold text-lg">MC</span>
+                  </div>
+                  <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">Memory Care</h1>
+                </div>
+                <div className="flex items-center space-x-2 sm:space-x-4">
+                  <span className="hidden sm:block text-slate-600 text-sm">Welcome, {user?.email}</span>
+                  <button onClick={() => {}} className="bg-gradient-to-r from-red-500 to-red-600 text-white px-4 py-2 rounded-xl text-sm">Sign Out</button>
+                </div>
+              </div>
+            </div>
+          </nav>
+        )}
+
+        <div className="absolute top-4 left-4">
+          <div className="bg-white/20 backdrop-blur-sm rounded-lg p-2 flex gap-2">
+            {['name', 'nameBox', 'nameLandmarks'].map(mode => (
+              <button key={mode} onClick={() => setDisplayMode(mode as any)} className={`px-3 py-1 rounded text-sm font-medium ${displayMode === mode ? 'bg-white text-black' : 'bg-white/20 text-white hover:bg-white/30'}`}>
+                {mode === 'name' ? '📝' : mode === 'nameBox' ? '📦' : '🎯'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {!isFullscreen && (
+          <div className="absolute bottom-4 right-4">
+            <button onClick={() => onToggleFullscreen(true)} className="bg-gradient-to-r from-purple-500 to-indigo-500 text-white font-bold py-3 px-6 rounded-xl shadow-lg">
+              📺 Go Fullscreen
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default function Home() {
+  const { user, loading, signOut } = useAuth();
+  const [isFullscreen, setIsFullscreen] = useState(true);
 
   const handleGoogleSignIn = async () => {
     const supabase = createClient();
@@ -380,282 +290,13 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
-      {/* Fullscreen Camera Mode */}
-      {isFullscreen && user && isWebcamStarted ? (
-        <div className="fixed inset-0 bg-black z-50 flex flex-col">
-          {/* Exit Fullscreen Button */}
-          <div className="absolute top-4 right-4 z-60">
-            <button
-              onClick={() => setIsFullscreen(false)}
-              className="bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white p-3 rounded-full transition-all duration-200 shadow-lg"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-
-          {/* Display Mode Toggle in Fullscreen */}
-          <div className="absolute top-4 left-4 z-60">
-            <div className="bg-white/20 backdrop-blur-sm rounded-lg p-2">
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setDisplayMode('name')}
-                  className={`px-3 py-1 rounded text-sm font-medium transition-all duration-200 ${
-                    displayMode === 'name'
-                      ? 'bg-white text-black'
-                      : 'bg-white/20 text-white hover:bg-white/30'
-                  }`}
-                >
-                  📝
-                </button>
-                <button
-                  onClick={() => setDisplayMode('nameBox')}
-                  className={`px-3 py-1 rounded text-sm font-medium transition-all duration-200 ${
-                    displayMode === 'nameBox'
-                      ? 'bg-white text-black'
-                      : 'bg-white/20 text-white hover:bg-white/30'
-                  }`}
-                >
-                  📦
-                </button>
-                <button
-                  onClick={() => setDisplayMode('nameLandmarks')}
-                  className={`px-3 py-1 rounded text-sm font-medium transition-all duration-200 ${
-                    displayMode === 'nameLandmarks'
-                      ? 'bg-white text-black'
-                      : 'bg-white/20 text-white hover:bg-white/30'
-                  }`}
-                >
-                  🎯
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Fullscreen Camera */}
-          <div className="flex-1 flex items-center justify-center">
-            <div className="relative">
-              <video
-                ref={videoRef}
-                width="1280"
-                height="720"
-                autoPlay
-                muted
-                onPlay={handleVideoPlay}
-                className="rounded-lg"
-                style={{ maxWidth: '95vw', maxHeight: '95vh' }}
-              />
-              <canvas
-                ref={canvasRef}
-                width="1280"
-                height="720"
-                className="absolute top-0 left-0 rounded-lg"
-                style={{ maxWidth: '95vw', maxHeight: '95vh' }}
-              />
-            </div>
-          </div>
+    <div className={`min-h-screen ${isFullscreen ? 'bg-black' : 'bg-gradient-to-br from-blue-50 via-white to-green-50'}`}>
+      {user ? (
+        <div className={`transition-all duration-300 ${isFullscreen ? 'fixed inset-0 z-50 w-full h-full' : 'relative max-w-7xl mx-auto py-6 sm:px-6 lg:px-8 h-[600px]'}`}>
+          <CameraView isFullscreen={isFullscreen} onToggleFullscreen={setIsFullscreen} />
         </div>
       ) : (
-        /* Regular Mode */
-        <>
-          <nav className={`bg-white/80 backdrop-blur-sm shadow-sm border-b border-blue-100 ${isFullscreen ? 'hidden' : ''}`}>
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex justify-between h-16 sm:h-20">
-                <div className="flex items-center">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-green-500 rounded-xl flex items-center justify-center">
-                      <span className="text-white font-bold text-lg">MC</span>
-                    </div>
-                    <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-                      Memory Care
-                    </h1>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2 sm:space-x-4">
-                  {user ? (
-                    <>
-                      <span className="hidden sm:block text-slate-600 text-sm">Welcome, {user.email}</span>
-                      <button
-                        onClick={signOut}
-                        className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-3 sm:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg"
-                      >
-                        Sign Out
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <Link
-                        href="/login"
-                        className="text-slate-600 hover:text-blue-600 px-3 py-2 rounded-xl text-sm font-medium transition-colors duration-200"
-                      >
-                        Sign In
-                      </Link>
-                      <Link
-                        href="/signup"
-                        className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white px-3 sm:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg"
-                      >
-                        Sign Up
-                      </Link>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          </nav>
-
-          <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-            {user ? (
-          <div className="space-y-4 sm:space-y-6 px-4 sm:px-0">
-            {/* Welcome Section */}
-            <div className="bg-white/70 backdrop-blur-sm overflow-hidden shadow-xl rounded-2xl border border-blue-100">
-              <div className="px-4 py-5 sm:p-6">
-                <h2 className="text-lg sm:text-xl font-bold text-slate-800 mb-4 flex items-center">
-                  <span className="w-2 h-2 bg-green-500 rounded-full mr-3"></span>
-                  Welcome to Memory Care
-                </h2>
-                <p className="text-slate-600 mb-4 text-sm sm:text-base">
-                  The face recognition system is active. Use the camera feed below to identify registered individuals.
-                </p>
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <Link href="/person" className="text-indigo-600 hover:underline font-medium">
-                    👥 Manage Registered Persons
-                  </Link>
-                  <Link href="/gemini-tts-test" className="text-green-600 hover:underline font-medium">
-                    🎤 Test Gemini Text-to-Speech
-                  </Link>
-                </div>
-              </div>
-            </div>
-
-            {/* Face Detection Section */}
-            <div className="bg-white/70 backdrop-blur-sm rounded-2xl shadow-xl p-4 sm:p-6 border border-blue-100">
-              <h3 className="text-xl sm:text-2xl font-bold text-center mb-6 bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-                🧠 Face Recognition System
-              </h3>
-
-              {error && (
-                <div className="bg-red-50 border-l-4 border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
-                  <div className="flex items-center">
-                    <span className="text-red-500 mr-2">⚠️</span>
-                    {error}
-                  </div>
-                </div>
-              )}
-
-              <div className="text-center mb-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center lg:justify-center gap-3 lg:gap-6 mb-6">
-                  <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
-                    <div className={`w-3 h-3 rounded-full ${modelsLoaded ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
-                    <span className="text-slate-700 text-sm font-medium">
-                      Models: {modelsLoaded ? '✅ Loaded' : '⏳ Loading...'}
-                    </span>
-                  </div>
-                  
-                  <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
-                    <div className={`w-3 h-3 rounded-full ${facesLoaded ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
-                    <span className="text-slate-700 text-sm font-medium">
-                      Faces: {facesLoaded ? `✅ ${dbPersons.length} Loaded` : '⏳ Loading...'}
-                    </span>
-                  </div>
-                  
-                  <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
-                    <div className={`w-3 h-3 rounded-full ${isWebcamStarted ? 'bg-green-500' : 'bg-gray-400'} ${isWebcamStarted ? 'animate-pulse' : ''}`}></div>
-                    <span className="text-slate-700 text-sm font-medium">
-                      Camera: {isWebcamStarted ? '🎥 Active' : '📷 Inactive'}
-                    </span>
-                  </div>
-                </div>
-                
-                {/* Display Mode Toggle */}
-                <div className="mb-6">
-                  <h4 className="text-sm font-semibold text-slate-700 mb-3 text-center">🎯 Display Mode</h4>
-                  <div className="flex flex-col sm:flex-row justify-center gap-2 sm:gap-3">
-                    <button
-                      onClick={() => setDisplayMode('name')}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                        displayMode === 'name'
-                          ? 'bg-blue-500 text-white shadow-lg'
-                          : 'bg-white/70 text-slate-700 hover:bg-blue-100'
-                      }`}
-                    >
-                      📝 Name Only
-                    </button>
-                    <button
-                      onClick={() => setDisplayMode('nameBox')}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                        displayMode === 'nameBox'
-                          ? 'bg-blue-500 text-white shadow-lg'
-                          : 'bg-white/70 text-slate-700 hover:bg-blue-100'
-                      }`}
-                    >
-                      📦 Name + Box
-                    </button>
-                    <button
-                      onClick={() => setDisplayMode('nameLandmarks')}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                        displayMode === 'nameLandmarks'
-                          ? 'bg-blue-500 text-white shadow-lg'
-                          : 'bg-white/70 text-slate-700 hover:bg-blue-100'
-                      }`}
-                    >
-                      🎯 Name + Box + Landmarks
-                    </button>
-                  </div>
-                </div>
-                
-                {/* Remove the manual start button since camera auto-starts */}
-              </div>
-              
-              {/* Camera Container and Fullscreen Button */}
-              <div className="relative flex flex-col items-center gap-4">
-                <div className="relative">
-                  <video
-                    ref={videoRef}
-                    width="720"
-                    height="560"
-                    autoPlay
-                    muted
-                    onPlay={handleVideoPlay}
-                    className="rounded-lg border-2 border-gray-300"
-                  />
-                  <canvas
-                    ref={canvasRef}
-                    width="720"
-                    height="560"
-                    className="absolute top-0 left-0 rounded-lg"
-                  />
-                </div>
-                
-                {/* Fullscreen Button */}
-                {isWebcamStarted && (
-                  <button
-                    onClick={() => setIsFullscreen(true)}
-                    className="bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg"
-                  >
-                    📺 Go Fullscreen
-                  </button>
-                )}
-              </div>
-
-              <div className="text-center bg-white/50 rounded-2xl p-4 border border-blue-100 mt-6">
-                <p className="text-sm sm:text-base text-slate-700">
-                  <span className="font-bold">🔍 Recognition Mode:</span> The system will identify registered individuals.
-                  <br />
-                  <span className="text-green-600 font-semibold">Green = Known person</span>, <span className="text-red-500 font-semibold">Red = Unknown person</span>
-                  <br />
-                  <span className="font-bold">🎯 Current Display:</span> {
-                    displayMode === 'name' ? '📝 Names only' :
-                    displayMode === 'nameBox' ? '📦 Names with bounding boxes' :
-                    '🎯 Names, boxes, and facial landmarks'
-                  }
-                </p>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="text-center">
+          <div className="text-center py-10 px-4">
             <h2 className="text-2xl sm:text-3xl font-extrabold text-blue-900 mb-2">
               Welcome to Memory Care
             </h2>
@@ -723,9 +364,6 @@ export default function Home() {
             </div>
           </div>
         )}
-      </main>
-        </>
-      )}
     </div>
   );
 }
