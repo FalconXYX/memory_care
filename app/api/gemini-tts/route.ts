@@ -19,6 +19,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // For now, skip Live API and go directly to standard API in production
+    // to avoid the b.mask function error
+    const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL;
+    
+    if (isProduction) {
+      console.log('Production environment detected, using standard API');
+      return await handleWithStandardAPI(text, apiKey);
+    }
+
     // Try to use the Live API first, fall back to standard API
     try {
       return await handleWithLiveAPI(text, apiKey);
@@ -41,122 +50,127 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleWithLiveAPI(text: string, apiKey: string) {
-  // Dynamic import to avoid SSR issues
-  const { GoogleGenAI, Modality } = await import('@google/genai');
-  
-  // Initialize Gemini Live API client
-  const client = new GoogleGenAI({ apiKey });
-  
-  // Configuration for Gemini 2.0 Flash Live with audio output
-  const config = {
-    responseModalities: [Modality.AUDIO],
-    speechConfig: {
-      voiceConfig: {
-        prebuiltVoiceConfig: { voiceName: 'Charon' }
+  try {
+    // Dynamic import to avoid SSR issues
+    const { GoogleGenAI, Modality } = await import('@google/genai');
+    
+    // Initialize Gemini Live API client
+    const client = new GoogleGenAI({ apiKey });
+    
+    // Configuration for Gemini 2.0 Flash Live with audio output
+    const config = {
+      responseModalities: [Modality.AUDIO],
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: { voiceName: 'Charon' }
+        }
+      },
+      generationConfig: {
+        responseModalities: [Modality.AUDIO]
+      },
+      systemInstruction: {
+        parts: [{ text: "You are a helpful assistant. Always respond with spoken audio, not text. Keep responses brief and conversational." }]
       }
-    },
-    generationConfig: {
-      responseModalities: [Modality.AUDIO]
-    },
-    systemInstruction: {
-      parts: [{ text: "You are a helpful assistant. Always respond with spoken audio, not text. Keep responses brief and conversational." }]
-    }
-  };
+    };
 
-  // Collect audio chunks
-  const audioChunks: ArrayBuffer[] = [];
-  let sessionComplete = false;
-  let hasReceivedAudio = false;
+    // Collect audio chunks
+    const audioChunks: ArrayBuffer[] = [];
+    let sessionComplete = false;
+    let hasReceivedAudio = false;
 
-  // Set up event callbacks
-  const callbacks = {
-    onopen: () => {
-      console.log('Live API connection opened');
-    },
-    onmessage: (message: any) => {
-      // Handle incoming messages and look for audio data
-      if (message.serverContent?.modelTurn) {
-        const parts = message.serverContent.modelTurn.parts || [];
+    // Set up event callbacks
+    const callbacks = {
+      onopen: () => {
+        console.log('Live API connection opened');
+      },
+      onmessage: (message: any) => {
+        // Handle incoming messages and look for audio data
+        if (message.serverContent?.modelTurn) {
+          const parts = message.serverContent.modelTurn.parts || [];
+          
+          // Look for audio parts
+          const audioParts = parts.filter(
+            (p: any) => p.inlineData && p.inlineData.mimeType?.startsWith("audio/pcm")
+          );
+          
+          // Process audio data
+          audioParts.forEach((part: any) => {
+            if (part.inlineData?.data) {
+              // Convert base64 to ArrayBuffer
+              const audioData = Uint8Array.from(atob(part.inlineData.data), c => c.charCodeAt(0));
+              audioChunks.push(audioData.buffer);
+              hasReceivedAudio = true;
+            }
+          });
+        }
         
-        // Look for audio parts
-        const audioParts = parts.filter(
-          (p: any) => p.inlineData && p.inlineData.mimeType?.startsWith("audio/pcm")
-        );
-        
-        // Process audio data
-        audioParts.forEach((part: any) => {
-          if (part.inlineData?.data) {
-            // Convert base64 to ArrayBuffer
-            const audioData = Uint8Array.from(atob(part.inlineData.data), c => c.charCodeAt(0));
-            audioChunks.push(audioData.buffer);
-            hasReceivedAudio = true;
-          }
-        });
-      }
-      
-      if (message.serverContent?.turnComplete) {
+        if (message.serverContent?.turnComplete) {
+          sessionComplete = true;
+        }
+      },
+      onerror: (error: any) => {
+        console.error('Live API error:', error);
+        sessionComplete = true;
+      },
+      onclose: (event: any) => {
+        console.log('Live API connection closed');
         sessionComplete = true;
       }
-    },
-    onerror: (error: any) => {
-      console.error('Live API error:', error);
-      sessionComplete = true;
-    },
-    onclose: (event: any) => {
-      console.log('Live API connection closed');
-      sessionComplete = true;
+    };
+
+    // Connect to Gemini Live API
+    const session = await client.live.connect({
+      model: 'models/gemini-2.0-flash-live-001',
+      config,
+      callbacks
+    });
+
+    // Send the text message
+    session.sendClientContent({
+      turns: [{ text }],
+      turnComplete: true
+    });
+
+    // Wait for audio response with timeout
+    const timeout = 15000; // 15 seconds
+    const startTime = Date.now();
+
+    while (!sessionComplete && (Date.now() - startTime) < timeout) {
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
-  };
 
-  // Connect to Gemini Live API
-  const session = await client.live.connect({
-    model: 'models/gemini-2.0-flash-live-001',
-    config,
-    callbacks
-  });
+    // Close the session
+    session.close();
 
-  // Send the text message
-  session.sendClientContent({
-    turns: [{ text }],
-    turnComplete: true
-  });
+    // Check if we have audio chunks
+    if (audioChunks.length === 0 || !hasReceivedAudio) {
+      throw new Error('No audio received from Gemini Live API');
+    }
 
-  // Wait for audio response with timeout
-  const timeout = 15000; // 15 seconds
-  const startTime = Date.now();
+    // Combine all audio chunks into a single buffer
+    const totalLength = audioChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+    const combinedAudio = new ArrayBuffer(totalLength);
+    const combinedView = new Uint8Array(combinedAudio);
+    
+    let offset = 0;
+    for (const chunk of audioChunks) {
+      combinedView.set(new Uint8Array(chunk), offset);
+      offset += chunk.byteLength;
+    }
 
-  while (!sessionComplete && (Date.now() - startTime) < timeout) {
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Return the audio as PCM response
+    return new NextResponse(combinedAudio, {
+      status: 200,
+      headers: {
+        'Content-Type': 'audio/pcm',
+        'Content-Length': combinedAudio.byteLength.toString(),
+        'Cache-Control': 'no-cache',
+      },
+    });
+  } catch (error) {
+    console.error('Live API specific error:', error);
+    throw error; // Re-throw to trigger fallback
   }
-
-  // Close the session
-  session.close();
-
-  // Check if we have audio chunks
-  if (audioChunks.length === 0 || !hasReceivedAudio) {
-    throw new Error('No audio received from Gemini Live API');
-  }
-
-  // Combine all audio chunks into a single buffer
-  const totalLength = audioChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-  const combinedAudio = new ArrayBuffer(totalLength);
-  const combinedView = new Uint8Array(combinedAudio);
-  
-  let offset = 0;
-  for (const chunk of audioChunks) {
-    combinedView.set(new Uint8Array(chunk), offset);
-    offset += chunk.byteLength;
-  }
-
-  // Return the audio as PCM response
-  return new NextResponse(combinedAudio, {
-    status: 200,
-    headers: {
-      'Content-Type': 'audio/pcm',
-      'Content-Length': combinedAudio.byteLength.toString(),
-      'Cache-Control': 'no-cache',
-    },
-  });
 }
 
 async function handleWithStandardAPI(text: string, apiKey: string) {

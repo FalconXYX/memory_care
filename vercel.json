@@ -1,0 +1,15 @@
+{
+  "functions": {
+    "app/api/**/*.js": {
+      "includeFiles": "node_modules/@google/genai/**",
+      "memory": 1024,
+      "maxDuration": 30
+    }
+  },
+  "build": {
+    "env": {
+      "NODE_OPTIONS": "--max-old-space-size=4096"
+    }
+  },
+  "regions": ["iad1"]
+}
