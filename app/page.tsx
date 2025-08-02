@@ -662,7 +662,6 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                 
                 {/* AI Assistant Toggle */}
                 <div className="mb-6">
-                  <h4 className="text-sm font-semibold text-slate-700 mb-3 text-center">🤖 AI Assistant</h4>
                   <div className="flex justify-center">
                     <button
                       onClick={() => setIsAssistantEnabled(!isAssistantEnabled)}
@@ -759,34 +758,6 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
               </div>
 
               {/* Audio is now handled by AudioStreamer - no need for HTML audio element */}
-
-              <div className="text-center bg-white/50 rounded-2xl p-4 border border-blue-100 mt-6">
-                <p className="text-sm sm:text-base text-slate-700">
-                  <span className="font-bold">🔍 Recognition Mode:</span> The system will identify registered individuals and display their context.
-
-                  <br />
-                  <span className="text-green-600 font-semibold">
-                    Green = Known person
-                  </span>
-                  ,{" "}
-                  <span className="text-red-500 font-semibold">
-                    Red = Unknown person
-                  </span>
-                  <br />
-                  <span className="font-bold">📋 Context Info:</span> Name, relationship, and description will be shown
-                  <br />
-                  <span className="font-bold">▶️ Play Buttons:</span> Click the green ▶ button next to detected persons to manually trigger voice descriptions and reset their cooldown
-                  <br />
-                  <span className="font-bold">🤖 AI Assistant:</span> {
-                    isAssistantSpeaking ? 'Currently speaking...' :
-                    isAssistantEnabled ? `Voice descriptions enabled (${PERSON_COOLDOWN_MINUTES}m cooldown)` : 
-                    'Voice descriptions disabled'
-                  }
-                  <br />
-                  <span className="font-bold">🎯 Display Mode:</span> Context information with bounding boxes
-
-                </p>
-              </div>
             </div>
           </div>
         ) : (
