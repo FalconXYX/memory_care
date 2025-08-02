@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, FormEvent, useEffect } from "react";
+import { useState, FormEvent, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, User, Upload, Save, X } from "lucide-react";
+import { ArrowLeft, User, Upload, Save, X, Camera, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 interface Person {
@@ -18,12 +18,19 @@ export default function PersonFormPage() {
   const [description, setDescription] = useState("");
   const [relationship, setRelationship] = useState("");
   const [image, setImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  
   const router = useRouter();
   const params = useParams();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Determine if we're in edit mode
   const personId = params?.personId as string | undefined;
@@ -57,9 +64,91 @@ export default function PersonFormPage() {
     }
   }, [isEditMode, personId]);
 
+  // Cleanup camera stream on unmount
+  useEffect(() => {
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [stream]);
+
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setImage(e.target.files[0]);
+      const file = e.target.files[0];
+      setImage(file);
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setImagePreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const startCamera = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480, facingMode: 'user' }
+      });
+      
+      setStream(mediaStream);
+      setShowCamera(true);
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+      }
+    } catch (err) {
+      setError("Failed to access camera. Please check permissions.");
+      console.error("Camera error:", err);
+    }
+  };
+
+  const stopCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      setStream(null);
+    }
+    setShowCamera(false);
+  };
+
+  const capturePhoto = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+
+    if (!context) return;
+
+    // Set canvas dimensions to match video
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    // Draw the video frame to canvas
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // Convert canvas to blob
+    canvas.toBlob((blob) => {
+      if (blob) {
+        // Create a File object from the blob
+        const file = new File([blob], `camera-capture-${Date.now()}.jpg`, {
+          type: 'image/jpeg'
+        });
+        
+        setImage(file);
+        setImagePreview(canvas.toDataURL('image/jpeg'));
+        stopCamera();
+      }
+    }, 'image/jpeg', 0.8);
+  };
+
+  const removeAttachment = () => {
+    setImage(null);
+    setImagePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -164,8 +253,8 @@ export default function PersonFormPage() {
                 </Link>
               </div>
               <h2 className="text-xl sm:text-2xl font-bold text-slate-800 flex items-center">
-                <User className="w-6 h-5.5 mr-2 text-slate-400" />
-                <p className="mt-1">{isEditMode ? "Edit Person" : "Add New Person"}</p>
+                <User className="w-6 h-6 mr-3 text-blue-600" />
+                {isEditMode ? "Edit Person" : "Add New Person"}
               </h2>
               <p className="text-slate-600 text-sm mt-1">
                 {isEditMode 
@@ -175,6 +264,44 @@ export default function PersonFormPage() {
               </p>
             </div>
           </div>
+
+          {/* Camera Modal */}
+          {showCamera && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+                <div className="text-center mb-4">
+                  <h3 className="text-lg font-semibold text-slate-800 mb-2">Take Photo</h3>
+                  <p className="text-sm text-slate-600">Position the person's face in the center</p>
+                </div>
+                
+                <div className="relative mb-4">
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    className="w-full rounded-xl border-2 border-blue-200"
+                  />
+                  <canvas ref={canvasRef} className="hidden" />
+                </div>
+                
+                <div className="flex gap-3">
+                  <button
+                    onClick={stopCamera}
+                    className="flex-1 px-4 py-2 border border-slate-300 rounded-xl text-slate-700 hover:bg-slate-50 transition-colors duration-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={capturePhoto}
+                    className="flex-1 px-4 py-2 bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white rounded-xl transition-all duration-200"
+                  >
+                    <Camera className="w-4 h-4 mr-2 inline" />
+                    Capture
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Form Section */}
           <div className="bg-white/70 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-blue-100">
@@ -243,15 +370,12 @@ export default function PersonFormPage() {
               </div>
               
               <div>
-                <label
-                  htmlFor="image"
-                  className="block text-sm font-semibold text-slate-700 mb-2"
-                >
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
                   Photo {isEditMode ? "(Optional)" : "*"}
                 </label>
                 
-                {/* Show current image if in edit mode */}
-                {isEditMode && currentImageUrl && (
+                {/* Show current image if in edit mode and no new image selected */}
+                {isEditMode && currentImageUrl && !imagePreview && (
                   <div className="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
                     <p className="text-sm text-slate-600 mb-3 font-medium">Current photo:</p>
                     <img
@@ -264,18 +388,60 @@ export default function PersonFormPage() {
                     </p>
                   </div>
                 )}
+
+                {/* Show new image preview */}
+                {imagePreview && (
+                  <div className="mb-4 p-4 bg-green-50 rounded-xl border border-green-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-sm text-slate-600 font-medium">New photo:</p>
+                      <button
+                        type="button"
+                        onClick={removeAttachment}
+                        className="inline-flex items-center px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs transition-colors duration-200"
+                      >
+                        <Trash2 className="w-3 h-3 mr-1" />
+                        Remove
+                      </button>
+                    </div>
+                    <img
+                      src={imagePreview}
+                      alt="New person image"
+                      className="w-24 h-24 object-cover rounded-xl border-2 border-white shadow-md"
+                    />
+                  </div>
+                )}
                 
-                <div className="relative">
+                {/* Upload options */}
+                <div className="space-y-3">
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={startCamera}
+                      className="flex-1 inline-flex items-center justify-center px-4 py-3 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white rounded-xl shadow-md hover:shadow-lg transition-all duration-200 text-sm font-medium"
+                    >
+                      <Camera className="w-4 h-4 mr-2" />
+                      Take Photo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex-1 inline-flex items-center justify-center px-4 py-3 bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white rounded-xl shadow-md hover:shadow-lg transition-all duration-200 text-sm font-medium"
+                    >
+                      <Upload className="w-4 h-4 mr-2" />
+                      Upload File
+                    </button>
+                  </div>
+                  
                   <input
-                    id="image"
+                    ref={fileInputRef}
                     type="file"
                     accept="image/*"
                     onChange={handleImageChange}
-                    className="w-full px-4 py-3 border border-blue-200 rounded-xl shadow-sm bg-white/80 backdrop-blur-sm transition-all duration-200 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-gradient-to-r file:from-blue-500 file:to-green-500 file:text-white hover:file:from-blue-600 hover:file:to-green-600 file:cursor-pointer"
-                    required={!isEditMode}
+                    className="hidden"
+                    required={!isEditMode && !image}
                   />
-                  <Upload className="absolute right-3 top-6.5 mt-1 transform -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
                 </div>
+                
                 <p className="text-xs text-slate-500 mt-2">
                   Choose a clear photo showing the person's face for best recognition results
                 </p>
