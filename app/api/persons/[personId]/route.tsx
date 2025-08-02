@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import prisma from '@/lib/prisma';
+import prisma from "@/lib/prisma";
 import { getAuthenticatedUser } from "@/lib/auth";
 import {
   getS3PresignedUrl,
@@ -10,7 +10,7 @@ import {
 // GET handler to fetch a person's details
 export async function GET(
   request: Request,
-  { params }: { params: { personId: string } }
+  context: { params: { personId: string } },
 ) {
   try {
     const authenticatedUser = await getAuthenticatedUser();
@@ -18,7 +18,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { personId } = params;
+    const { personId } = context.params;
 
     const person = await prisma.person.findUnique({
       where: { id: personId, userId: authenticatedUser.id },
@@ -42,7 +42,7 @@ export async function GET(
     console.error("Error fetching person:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -50,7 +50,7 @@ export async function GET(
 // PUT handler is updated for multipart/form-data
 export async function PUT(
   request: Request,
-  { params }: { params: { personId: string } }
+  context: { params: { personId: string } },
 ) {
   try {
     const authenticatedUser = await getAuthenticatedUser();
@@ -58,7 +58,7 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { personId } = params;
+    const { personId } = context.params;
     const existingPerson = await prisma.person.findUnique({
       where: { id: personId, userId: authenticatedUser.id },
     });
@@ -93,7 +93,7 @@ export async function PUT(
       const { key } = await uploadFileToS3(
         buffer,
         imageFile.name,
-        imageFile.type
+        imageFile.type,
       );
       updateData.imageUrl = key; // Save the new key to the database
     }
@@ -108,7 +108,7 @@ export async function PUT(
     console.error("Error updating person:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -116,7 +116,7 @@ export async function PUT(
 // DELETE handler to clean up S3 and records
 export async function DELETE(
   request: Request,
-  { params }: { params: { personId: string } }
+  context: { params: { personId: string } },
 ) {
   try {
     const authenticatedUser = await getAuthenticatedUser();
@@ -124,7 +124,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { personId } = params;
+    const { personId } = context.params;
     const existingPerson = await prisma.person.findUnique({
       where: { id: personId, userId: authenticatedUser.id },
     });
@@ -148,7 +148,7 @@ export async function DELETE(
     console.error("Error deleting person:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
