@@ -25,22 +25,24 @@ export async function POST(request: NextRequest) {
     
     // Configuration for Gemini 2.0 Flash Live with audio output
     const config: LiveConnectConfig = {
-      generationConfig: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: {
-              voiceName: 'Charon'
-            }
-          }
+      responseModalities: [Modality.AUDIO],
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: { voiceName: 'Charon' }
         }
+      },
+      generationConfig: {
+        responseModalities: [Modality.AUDIO]
+      },
+      systemInstruction: {
+        parts: [{ text: "You are a helpful assistant. Always respond with spoken audio, not text. Keep responses brief and conversational." }]
       }
     };
 
     // Collect audio chunks
     const audioChunks: ArrayBuffer[] = [];
-    let isReceivingAudio = false;
     let sessionComplete = false;
+    let hasReceivedAudio = false;
 
     // Set up event callbacks
     const callbacks: LiveCallbacks = {
@@ -63,7 +65,7 @@ export async function POST(request: NextRequest) {
               // Convert base64 to ArrayBuffer
               const audioData = Uint8Array.from(atob(part.inlineData.data), c => c.charCodeAt(0));
               audioChunks.push(audioData.buffer);
-              isReceivingAudio = true;
+              hasReceivedAudio = true;
             }
           });
         }
@@ -74,6 +76,7 @@ export async function POST(request: NextRequest) {
       },
       onerror: (error) => {
         console.error('Live API error:', error);
+        sessionComplete = true;
       },
       onclose: (event) => {
         console.log('Live API connection closed');
@@ -105,9 +108,13 @@ export async function POST(request: NextRequest) {
     // Close the session
     session.close();
 
-    if (!isReceivingAudio || audioChunks.length === 0) {
+    // Check if we have audio chunks
+    if (audioChunks.length === 0 || !hasReceivedAudio) {
       return NextResponse.json(
-        { error: 'No audio received from Gemini Live API' },
+        { 
+          error: 'No audio received from Gemini Live API',
+          details: 'The Live API responded but did not include audio data.'
+        },
         { status: 500 }
       );
     }
@@ -123,7 +130,7 @@ export async function POST(request: NextRequest) {
       offset += chunk.byteLength;
     }
 
-    // Return the audio as a WAV-like response
+    // Return the audio as PCM response
     return new NextResponse(combinedAudio, {
       status: 200,
       headers: {
