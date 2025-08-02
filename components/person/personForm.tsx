@@ -219,7 +219,7 @@ export default function PersonFormPage() {
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-4 py-3 border border-blue-200 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/80 backdrop-blur-sm transition-all duration-200"
+                  className="w-full text-black px-4 py-3 border border-blue-200 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/80 backdrop-blur-sm transition-all duration-200"
                   placeholder="Enter the person's full name"
                   required
                 />
@@ -237,7 +237,7 @@ export default function PersonFormPage() {
                   type="text"
                   value={relationship}
                   onChange={(e) => setRelationship(e.target.value)}
-                  className="w-full px-4 py-3 border border-blue-200 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/80 backdrop-blur-sm transition-all duration-200"
+                  className="text-black w-full px-4 py-3 border border-blue-200 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/80 backdrop-blur-sm transition-all duration-200"
                   placeholder="e.g., Father, Mother, Friend, Caregiver"
                   required
                 />
@@ -254,7 +254,7 @@ export default function PersonFormPage() {
                   id="description"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-4 py-3 border border-blue-200 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/80 backdrop-blur-sm transition-all duration-200 resize-none"
+                  className="text-black w-full px-4 py-3 border border-blue-200 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/80 backdrop-blur-sm transition-all duration-200 resize-none"
                   rows={4}
                   placeholder="Describe this person, their role, or any important details to remember"
                   required
