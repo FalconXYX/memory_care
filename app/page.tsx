@@ -668,7 +668,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                 {user ? (
                   <>
                     <span className="hidden sm:block text-slate-600 text-sm">
-                      Welcome, {user.email}
+                      Welcome, {user.user_metadata.full_name || user.email}
                     </span>
                     <button
                       onClick={signOut}
