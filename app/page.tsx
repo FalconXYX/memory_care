@@ -218,7 +218,10 @@ export default function Home() {
     const canvas = canvasRef.current
     const video = videoRef.current
     
-    const displaySize = { width: video.width, height: video.height }
+    // Set canvas size to match video display size
+    const displaySize = { width: video.clientWidth, height: video.clientHeight }
+    canvas.width = video.clientWidth
+    canvas.height = video.clientHeight
     faceapi.matchDimensions(canvas, displaySize)
 
     const detectFaces = async () => {
@@ -253,12 +256,14 @@ export default function Home() {
           const { label, distance } = bestMatch
           
           let displayText = ''
-          let textColor = '#ff0000' // Red for unknown
+          let textColor = '#DC2626' // Warm red for unknown
+          let backgroundColor = 'rgba(220, 38, 38, 0.1)' // Light red background
           
           if (label === 'Thomas' || label === 'Parth') {
             const confidence = Math.round((1 - distance) * 100)
             displayText = `${label} (${confidence}%)`
-            textColor = '#00ff00' // Green for known faces
+            textColor = '#059669' // Warm green for known faces
+            backgroundColor = 'rgba(5, 150, 105, 0.1)' // Light green background
             
             if (debugMode) {
               displayText += `\nDist: ${distance.toFixed(3)}`
@@ -272,22 +277,34 @@ export default function Home() {
           
           if (ctx) {
             const box = detection.detection.box
-            ctx.fillStyle = textColor
-            ctx.font = debugMode ? '14px Arial' : '20px Arial'
-            ctx.strokeStyle = 'black'
-            ctx.lineWidth = 3
             
-            // Draw text with background for better visibility
+            // Draw background rectangle for better text visibility
             const lines = displayText.split('\n')
+            const lineHeight = debugMode ? 16 : 22
+            const textWidth = Math.max(...lines.map(line => ctx.measureText(line).width || 0)) + 20
+            const textHeight = lines.length * lineHeight + 10
+            
+            // Background rectangle
+            ctx.fillStyle = backgroundColor
+            ctx.fillRect(box.x - 5, box.y - textHeight - 10, textWidth, textHeight)
+            
+            // Text styling
+            ctx.fillStyle = textColor
+            ctx.font = `bold ${debugMode ? '14px' : '18px'} Inter, system-ui, sans-serif`
+            ctx.strokeStyle = 'white'
+            ctx.lineWidth = 2
+            
+            // Draw text with outline for better visibility
             lines.forEach((line, lineIndex) => {
-              const y = box.y - 10 - (lines.length - 1 - lineIndex) * 18
+              const y = box.y - 15 - (lines.length - 1 - lineIndex) * lineHeight
               ctx.strokeText(line, box.x, y)
               ctx.fillText(line, box.x, y)
             })
             
             if (debugMode) {
               // Draw detection score
-              ctx.fillStyle = '#ffff00'
+              ctx.fillStyle = '#F59E0B' // Amber color
+              ctx.font = 'bold 12px Inter, system-ui, sans-serif'
               ctx.fillText(`Score: ${detection.detection.score.toFixed(3)}`, box.x, box.y + box.height + 20)
             }
           }
@@ -330,30 +347,37 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-green-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-200 border-t-blue-500 mx-auto"></div>
+          <p className="mt-4 text-slate-600 text-lg">Loading Memory Care...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
+      <nav className="bg-white/80 backdrop-blur-sm shadow-sm border-b border-blue-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
+          <div className="flex justify-between h-16 sm:h-20">
             <div className="flex items-center">
-              <h1 className="text-xl font-semibold text-gray-900">Memory Care App</h1>
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-green-500 rounded-xl flex items-center justify-center">
+                  <span className="text-white font-bold text-lg">MC</span>
+                </div>
+                <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+                  Memory Care
+                </h1>
+              </div>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2 sm:space-x-4">
               {user ? (
                 <>
-                  <span className="text-gray-700">Welcome, {user.email}</span>
+                  <span className="hidden sm:block text-slate-600 text-sm">Welcome, {user.email}</span>
                   <button
                     onClick={signOut}
-                    className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+                    className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-3 sm:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg"
                   >
                     Sign Out
                   </button>
@@ -362,13 +386,13 @@ export default function Home() {
                 <>
                   <Link
                     href="/login"
-                    className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                    className="text-slate-600 hover:text-blue-600 px-3 py-2 rounded-xl text-sm font-medium transition-colors duration-200"
                   >
                     Sign In
                   </Link>
                   <Link
                     href="/signup"
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+                    className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white px-3 sm:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg"
                   >
                     Sign Up
                   </Link>
@@ -381,99 +405,109 @@ export default function Home() {
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         {user ? (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6 px-4 sm:px-0">
             {/* Welcome Section */}
-            <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="bg-white/70 backdrop-blur-sm overflow-hidden shadow-xl rounded-2xl border border-blue-100">
               <div className="px-4 py-5 sm:p-6">
-                <h2 className="text-lg font-medium text-gray-900 mb-4">Welcome to Memory Care</h2>
-                <p className="text-gray-600 mb-4">
+                <h2 className="text-lg sm:text-xl font-bold text-slate-800 mb-4 flex items-center">
+                  <span className="w-2 h-2 bg-green-500 rounded-full mr-3"></span>
+                  Welcome to Memory Care
+                </h2>
+                <p className="text-slate-600 mb-4 text-sm sm:text-base">
                   Use the face recognition system below to help identify people in your life.
                 </p>
-                <div className="bg-gray-50 p-4 rounded-md">
-                  <p><strong>Email:</strong> {user.email}</p>
-                  <p><strong>User ID:</strong> {user.id}</p>
-                  <p><strong>Last Sign In:</strong> {new Date(user.last_sign_in_at || '').toLocaleString()}</p>
-                  {user.app_metadata?.provider && (
-                    <p><strong>Sign-in Method:</strong> {user.app_metadata.provider}</p>
+                <div className="bg-gradient-to-r from-blue-50 to-green-50 p-4 rounded-xl border border-blue-100">
+                  <p className="text-sm"><strong>Email:</strong> {user?.email}</p>
+                  <p className="text-sm"><strong>User ID:</strong> {user?.id}</p>
+                  <p className="text-sm"><strong>Last Sign In:</strong> {new Date(user?.last_sign_in_at || '').toLocaleString()}</p>
+                  {user?.app_metadata?.provider && (
+                    <p className="text-sm"><strong>Sign-in Method:</strong> {user.app_metadata.provider}</p>
                   )}
                 </div>
               </div>
             </div>
 
             {/* Face Detection Section */}
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h3 className="text-xl font-semibold text-center mb-6 text-gray-800">
-                Face Recognition System
+            <div className="bg-white/70 backdrop-blur-sm rounded-2xl shadow-xl p-4 sm:p-6 border border-blue-100">
+              <h3 className="text-xl sm:text-2xl font-bold text-center mb-6 bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+                🧠 Face Recognition System
               </h3>
               
               {error && (
-                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-                  {error}
+                <div className="bg-red-50 border-l-4 border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
+                  <div className="flex items-center">
+                    <span className="text-red-500 mr-2">⚠️</span>
+                    {error}
+                  </div>
                 </div>
               )}
 
               <div className="text-center mb-6">
-                <div className="flex items-center justify-center gap-4 mb-4 flex-wrap">
-                  <div className={`w-4 h-4 rounded-full ${modelsLoaded ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                  <span className="text-gray-700">
-                    Models: {modelsLoaded ? 'Loaded' : 'Loading...'}
-                  </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center lg:justify-center gap-3 lg:gap-6 mb-6">
+                  <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
+                    <div className={`w-3 h-3 rounded-full ${modelsLoaded ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
+                    <span className="text-slate-700 text-sm font-medium">
+                      Models: {modelsLoaded ? '✅ Loaded' : '⏳ Loading...'}
+                    </span>
+                  </div>
                   
                   {referencePeople.map((person) => (
-                    <div key={person.name} className="flex items-center gap-2">
-                      <div className={`w-4 h-4 rounded-full ${person.loaded ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                      <span className="text-gray-700">
-                        {person.name}: {person.loaded ? 'Loaded' : 'Loading...'}
+                    <div key={person.name} className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
+                      <div className={`w-3 h-3 rounded-full ${person.loaded ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
+                      <span className="text-slate-700 text-sm font-medium">
+                        {person.name}: {person.loaded ? '✅ Ready' : '⏳ Loading...'}
                       </span>
                     </div>
                   ))}
                   
-                  <div className={`w-4 h-4 rounded-full ${isWebcamStarted ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-                  <span className="text-gray-700">
-                    Camera: {isWebcamStarted ? 'Active' : 'Inactive'}
-                  </span>
+                  <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
+                    <div className={`w-3 h-3 rounded-full ${isWebcamStarted ? 'bg-green-500' : 'bg-gray-400'} ${isWebcamStarted ? 'animate-pulse' : ''}`}></div>
+                    <span className="text-slate-700 text-sm font-medium">
+                      Camera: {isWebcamStarted ? '🎥 Active' : '📷 Inactive'}
+                    </span>
+                  </div>
                 </div>
 
                 {!isWebcamStarted && modelsLoaded && referenceImageLoaded && (
                   <button
                     onClick={startVideo}
-                    className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mr-4"
+                    className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg"
                   >
-                    Start Camera
+                    🎥 Start Camera
                   </button>
                 )}
 
                 {isWebcamStarted && (
-                  <div className="flex justify-center gap-4 mb-4">
+                  <div className="flex flex-col sm:flex-row justify-center gap-3 mb-6">
                     <button
                       onClick={() => setMode('recognition')}
-                      className={`px-4 py-2 rounded font-medium ${
+                      className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 ${
                         mode === 'recognition'
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                          ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg'
+                          : 'bg-white/70 text-slate-700 hover:bg-white/90 border border-blue-200'
                       }`}
                     >
-                      Recognition Mode
+                      🔍 Recognition Mode
                     </button>
                     <button
                       onClick={() => setMode('registration')}
-                      className={`px-4 py-2 rounded font-medium ${
+                      className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 ${
                         mode === 'registration'
-                          ? 'bg-green-500 text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                          ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg'
+                          : 'bg-white/70 text-slate-700 hover:bg-white/90 border border-green-200'
                       }`}
                     >
-                      Add New Face
+                      ➕ Add New Face
                     </button>
                     <button
                       onClick={() => setDebugMode(!debugMode)}
-                      className={`px-4 py-2 rounded font-medium ${
+                      className={`px-6 py-3 rounded-xl font-medium transition-all duration-200 ${
                         debugMode
-                          ? 'bg-purple-500 text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                          ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg'
+                          : 'bg-white/70 text-slate-700 hover:bg-white/90 border border-purple-200'
                       }`}
                     >
-                      {debugMode ? 'Debug ON' : 'Debug OFF'}
+                      {debugMode ? '🔬 Debug ON' : '🔬 Debug OFF'}
                     </button>
                   </div>
                 )}
@@ -481,13 +515,18 @@ export default function Home() {
 
               {/* Registered People Display */}
               {referencePeople.some(p => p.loaded) && (
-                <div className="bg-gray-50 p-4 rounded-lg mb-6">
-                  <h4 className="text-lg font-semibold mb-4">Registered People</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="bg-gradient-to-r from-blue-50 to-green-50 p-4 sm:p-6 rounded-2xl mb-6 border border-blue-100">
+                  <h4 className="text-lg font-bold mb-4 text-slate-800 flex items-center">
+                    👥 Registered People
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {referencePeople.filter(p => p.loaded).map((person) => (
-                      <div key={person.name} className="bg-white p-3 rounded border">
-                        <div className="font-medium text-gray-800">{person.name}</div>
-                        <div className="text-sm text-gray-600">Reference Image Loaded</div>
+                      <div key={person.name} className="bg-white/80 backdrop-blur-sm p-4 rounded-xl border border-blue-200 shadow-sm">
+                        <div className="font-bold text-slate-800 flex items-center">
+                          <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                          {person.name}
+                        </div>
+                        <div className="text-sm text-slate-600 mt-1">✅ Reference Ready</div>
                       </div>
                     ))}
                   </div>
@@ -496,30 +535,32 @@ export default function Home() {
 
               {/* Registration Form */}
               {mode === 'registration' && isWebcamStarted && (
-                <div className="bg-gray-50 p-4 rounded-lg mb-6">
-                  <h4 className="text-lg font-semibold mb-4">Register New Person</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div className="bg-gradient-to-r from-green-50 to-blue-50 p-4 sm:p-6 rounded-2xl mb-6 border border-green-100">
+                  <h4 className="text-lg font-bold mb-4 text-slate-800 flex items-center">
+                    ➕ Register New Person
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-bold text-slate-700 mb-2">
                         Name (required)
                       </label>
                       <input
                         type="text"
                         value={newPersonName}
                         onChange={(e) => setNewPersonName(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-4 py-3 border-2 border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/70 backdrop-blur-sm"
                         placeholder="Enter person's name"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-bold text-slate-700 mb-2">
                         Context (optional)
                       </label>
                       <input
                         type="text"
                         value={newPersonContext}
                         onChange={(e) => setNewPersonContext(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-4 py-3 border-2 border-blue-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/70 backdrop-blur-sm"
                         placeholder="e.g., Daughter, Son, Caregiver, Friend"
                       />
                     </div>
@@ -527,23 +568,28 @@ export default function Home() {
                   <button
                     onClick={registerFace}
                     disabled={!newPersonName.trim() || isRegistering}
-                    className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:from-gray-400 disabled:to-gray-500 text-white font-bold py-3 px-6 rounded-xl disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl"
                   >
-                    {isRegistering ? 'Registering...' : 'Register Face'}
+                    {isRegistering ? '⏳ Registering...' : '✅ Register Face'}
                   </button>
                 </div>
               )}
 
               {/* Stored Faces List */}
               {storedFaces.length > 0 && (
-                <div className="bg-gray-50 p-4 rounded-lg mb-6">
-                  <h4 className="text-lg font-semibold mb-4">Registered People</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="bg-gradient-to-r from-purple-50 to-pink-50 p-4 sm:p-6 rounded-2xl mb-6 border border-purple-100">
+                  <h4 className="text-lg font-bold mb-4 text-slate-800 flex items-center">
+                    📝 Dynamic Registered People
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {storedFaces.map((face, index) => (
-                      <div key={index} className="bg-white p-3 rounded border">
-                        <div className="font-medium text-gray-800">{face.name}</div>
+                      <div key={index} className="bg-white/80 backdrop-blur-sm p-4 rounded-xl border border-purple-200 shadow-sm">
+                        <div className="font-bold text-slate-800 flex items-center">
+                          <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
+                          {face.name}
+                        </div>
                         {face.context && (
-                          <div className="text-sm text-gray-600">{face.context}</div>
+                          <div className="text-sm text-slate-600 mt-1">{face.context}</div>
                         )}
                       </div>
                     ))}
@@ -551,41 +597,54 @@ export default function Home() {
                 </div>
               )}
 
-              <div className="relative flex justify-center">
-                <div className="relative">
-                  <video
-                    ref={videoRef}
-                    width="720"
-                    height="560"
-                    autoPlay
-                    muted
-                    onPlay={handleVideoPlay}
-                    className="rounded-lg border-2 border-gray-300"
-                  />
-                  <canvas
-                    ref={canvasRef}
-                    width="720"
-                    height="560"
-                    className="absolute top-0 left-0 rounded-lg"
-                  />
+              {/* Camera Container */}
+              <div className="relative flex justify-center mb-6">
+                <div className="relative w-full max-w-4xl">
+                  <div className="relative bg-black rounded-2xl overflow-hidden shadow-2xl border-4 border-white/20">
+                    <video
+                      ref={videoRef}
+                      className="w-full h-auto max-h-[70vh] object-cover"
+                      autoPlay
+                      muted
+                      onPlay={handleVideoPlay}
+                      style={{ aspectRatio: '16/9' }}
+                    />
+                    <canvas
+                      ref={canvasRef}
+                      className="absolute top-0 left-0 w-full h-full object-cover"
+                      style={{ aspectRatio: '16/9' }}
+                    />
+                  </div>
+                  
+                  {/* Camera overlay info */}
+                  <div className="absolute top-4 left-4 right-4 flex justify-between items-start">
+                    <div className="bg-black/50 backdrop-blur-sm text-white px-3 py-2 rounded-xl text-sm">
+                      🎥 Live Camera
+                    </div>
+                    {debugMode && (
+                      <div className="bg-purple-500/80 backdrop-blur-sm text-white px-3 py-2 rounded-xl text-sm">
+                        🔬 Debug Mode
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              <div className="mt-6 text-center text-gray-600">
-                <p className="text-sm">
+              <div className="text-center bg-white/50 rounded-2xl p-4 border border-blue-100">
+                <p className="text-sm sm:text-base text-slate-700">
                   {mode === 'recognition' ? (
                     <>
-                      <strong>Recognition Mode:</strong> The system will detect Thomas, Parth, or unknown people.
+                      <span className="font-bold">🔍 Recognition Mode:</span> The system will detect Thomas, Parth, or unknown people.
                       <br />
-                      Green text = Known person (Thomas/Parth), Red text = Unknown person
+                      <span className="text-green-600 font-semibold">Green text = Known person</span>, <span className="text-red-500 font-semibold">Red text = Unknown person</span>
                       <br />
-                      Multiple people can be detected simultaneously
+                      <span className="text-blue-600">Multiple people can be detected simultaneously</span>
                     </>
                   ) : (
                     <>
-                      <strong>Registration Mode:</strong> Position yourself in frame and click "Register Face".
+                      <span className="font-bold">➕ Registration Mode:</span> Position yourself in frame and click "Register Face".
                       <br />
-                      Ensure only one person is visible for best results.
+                      <span className="text-amber-600">Ensure only one person is visible for best results.</span>
                     </>
                   )}
                 </p>
