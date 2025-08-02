@@ -9,8 +9,8 @@ import {
 
 // GET handler to fetch a person's details
 export async function GET(
-  request: Request,
-  context: { params: { personId: string } },
+  req: Request,
+  context: { params: { personId: string } } 
 ) {
   try {
     const authenticatedUser = await getAuthenticatedUser();
@@ -18,8 +18,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { personId } = context.params;
-
+    const personId = context.params.personId;
     const person = await prisma.person.findUnique({
       where: { id: personId, userId: authenticatedUser.id },
     });
@@ -36,21 +35,21 @@ export async function GET(
 
     return NextResponse.json({
       ...person,
-      imageUrl: presignedImageUrl, // Return the temporary, accessible URL
+      imageUrl: presignedImageUrl,
     });
   } catch (error) {
     console.error("Error fetching person:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
 
-// PUT handler is updated for multipart/form-data
+// PUT handler for multipart/form-data
 export async function PUT(
   request: Request,
-  context: { params: { personId: string } },
+  context: { params: { personId: string } }
 ) {
   try {
     const authenticatedUser = await getAuthenticatedUser();
@@ -58,7 +57,7 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { personId } = context.params;
+    const personId = context.params.personId;
     const existingPerson = await prisma.person.findUnique({
       where: { id: personId, userId: authenticatedUser.id },
     });
@@ -67,7 +66,6 @@ export async function PUT(
       return NextResponse.json({ error: "Person not found" }, { status: 404 });
     }
 
-    // Process multipart/form-data instead of JSON
     const formData = await request.formData();
     const name = formData.get("name") as string;
     const description = formData.get("description") as string;
@@ -81,21 +79,18 @@ export async function PUT(
       imageUrl?: string;
     } = { name, description, relationship };
 
-    // Handle the file upload
     if (imageFile) {
-      // If an old image exists, delete it from S3
       if (existingPerson.imageUrl) {
         await deleteFileFromS3(existingPerson.imageUrl);
       }
 
-      // Upload the new image to S3
       const buffer = Buffer.from(await imageFile.arrayBuffer());
       const { key } = await uploadFileToS3(
         buffer,
         imageFile.name,
-        imageFile.type,
+        imageFile.type
       );
-      updateData.imageUrl = key; // Save the new key to the database
+      updateData.imageUrl = key;
     }
 
     const updatedPerson = await prisma.person.update({
@@ -108,15 +103,15 @@ export async function PUT(
     console.error("Error updating person:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
 
-// DELETE handler to clean up S3 and records
+// DELETE handler to remove person and image
 export async function DELETE(
   request: Request,
-  context: { params: { personId: string } },
+  context: { params: { personId: string } }
 ) {
   try {
     const authenticatedUser = await getAuthenticatedUser();
@@ -124,7 +119,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { personId } = context.params;
+    const personId = context.params.personId;
     const existingPerson = await prisma.person.findUnique({
       where: { id: personId, userId: authenticatedUser.id },
     });
@@ -133,12 +128,10 @@ export async function DELETE(
       return NextResponse.json({ error: "Person not found" }, { status: 404 });
     }
 
-    // If an image is associated, delete it from S3 first
     if (existingPerson.imageUrl) {
       await deleteFileFromS3(existingPerson.imageUrl);
     }
 
-    // Then delete the database record
     await prisma.person.delete({
       where: { id: personId },
     });
@@ -148,7 +141,7 @@ export async function DELETE(
     console.error("Error deleting person:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
