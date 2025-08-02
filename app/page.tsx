@@ -28,27 +28,31 @@ export default function Home() {
     }>
   >([]);
   const [facesLoaded, setFacesLoaded] = useState(false);
-  const [debugMode, setDebugMode] = useState(false)
-  const [displayMode, setDisplayMode] = useState<'name' | 'nameBox' | 'nameLandmarks'>(
-    'name'
-  )
+  const [debugMode, setDebugMode] = useState(false);
+  const [displayMode, setDisplayMode] = useState<
+    "name" | "nameBox" | "nameLandmarks"
+  >("name");
   const [isAssistantEnabled, setIsAssistantEnabled] = useState(false);
-  const [assistantStatus, setAssistantStatus] = useState<string>('');
+  const [assistantStatus, setAssistantStatus] = useState<string>("");
   const [isAssistantSpeaking, setIsAssistantSpeaking] = useState(false);
   const [lastApiCall, setLastApiCall] = useState<number>(0);
   // Track last time any speech finished for global cooldown
   const [lastSpeechTime, setLastSpeechTime] = useState<number>(0);
-  
+
   // Hashmap to track last voice play time for each person
-  const [personCooldowns, setPersonCooldowns] = useState<Map<string, number>>(new Map());
-  
+  const [personCooldowns, setPersonCooldowns] = useState<Map<string, number>>(
+    new Map()
+  );
+
   // Track currently detected persons with their positions for overlay buttons
-  const [detectedPersons, setDetectedPersons] = useState<Array<{
-    person: any;
-    box: { x: number; y: number; width: number; height: number };
-    textColor: string;
-  }>>([]);
-  
+  const [detectedPersons, setDetectedPersons] = useState<
+    Array<{
+      person: any;
+      box: { x: number; y: number; width: number; height: number };
+      textColor: string;
+    }>
+  >([]);
+
   // Cooldown configuration in minutes
   const PERSON_COOLDOWN_MINUTES = 5;
   const API_CALL_DEBOUNCE_MS = 2000; // 2 seconds between API calls
@@ -57,11 +61,11 @@ export default function Home() {
 
   // Store the interval ref so we can clear it when needed
   const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   // Audio streaming refs
   const audioStreamerRef = useRef<AudioStreamer | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  
+
   // Track detected persons to prevent API spam
   const detectedPersonsRef = useRef<Set<string>>(new Set());
   const lastDetectionTimeRef = useRef<number>(0);
@@ -70,79 +74,92 @@ export default function Home() {
   const isPersonInCooldown = (personName: string): boolean => {
     const lastPlayTime = personCooldowns.get(personName);
     if (!lastPlayTime) return false;
-    
+
     const cooldownMs = PERSON_COOLDOWN_MINUTES * 60 * 1000;
-    const isInCooldown = (Date.now() - lastPlayTime) < cooldownMs;
-    
+    const isInCooldown = Date.now() - lastPlayTime < cooldownMs;
+
     if (isInCooldown) {
       const timeLeft = cooldownMs - (Date.now() - lastPlayTime);
-      console.log(`${personName} is in cooldown for ${Math.ceil(timeLeft / (60 * 1000))} more minutes`);
+      console.log(
+        `${personName} is in cooldown for ${Math.ceil(
+          timeLeft / (60 * 1000)
+        )} more minutes`
+      );
     }
-    
+
     return isInCooldown;
   };
 
   // Initialize audio context and streamer
   useEffect(() => {
     if (!audioStreamerRef.current) {
-      audioContext({ id: "memory-care-audio" }).then((audioCtx: AudioContext) => {
-        audioContextRef.current = audioCtx;
-        audioStreamerRef.current = new AudioStreamer(audioCtx);
-        audioStreamerRef.current.onComplete = () => {
-          setIsAssistantSpeaking(false);
-          setAssistantStatus('');
-          setLastSpeechTime(Date.now());
-        };
-      });
+      audioContext({ id: "memory-care-audio" }).then(
+        (audioCtx: AudioContext) => {
+          audioContextRef.current = audioCtx;
+          audioStreamerRef.current = new AudioStreamer(audioCtx);
+          audioStreamerRef.current.onComplete = () => {
+            setIsAssistantSpeaking(false);
+            setAssistantStatus("");
+            setLastSpeechTime(Date.now());
+          };
+        }
+      );
     }
   }, []);
 
   // Simple function to call Gemini Live API for person description
   const generatePersonDescription = async (person: any, forcePlay = false) => {
-    console.log(`Attempting to describe ${person.name}, forcePlay: ${forcePlay}, isAssistantEnabled: ${isAssistantEnabled}, isAssistantSpeaking: ${isAssistantSpeaking}`);
-    
+    console.log(
+      `Attempting to describe ${person.name}, forcePlay: ${forcePlay}, isAssistantEnabled: ${isAssistantEnabled}, isAssistantSpeaking: ${isAssistantSpeaking}`
+    );
+
     // Global cooldown between speeches
-    if (!forcePlay && (Date.now() - lastSpeechTime) < GLOBAL_COOLDOWN_MS) {
-      console.log('Global cooldown active, skipping');
+    if (!forcePlay && Date.now() - lastSpeechTime < GLOBAL_COOLDOWN_MS) {
+      console.log("Global cooldown active, skipping");
       return;
     }
 
     // Don't play if assistant is disabled (unless force play)
     if (!isAssistantEnabled && !forcePlay) {
-      console.log('Assistant disabled, skipping');
+      console.log("Assistant disabled, skipping");
       return;
     }
-    
+
     // Don't play if already speaking (unless force play)
     if (isAssistantSpeaking && !forcePlay) {
-      console.log('Assistant already speaking, skipping');
+      console.log("Assistant already speaking, skipping");
       return;
     }
-    
+
     // Debounce API calls to prevent spam
-    if (!forcePlay && (Date.now() - lastApiCall) < API_CALL_DEBOUNCE_MS) {
-      console.log('API call too recent, skipping');
+    if (!forcePlay && Date.now() - lastApiCall < API_CALL_DEBOUNCE_MS) {
+      console.log("API call too recent, skipping");
       return;
     }
-    
+
     // Check cooldown for same person (unless force play)
     if (!forcePlay && isPersonInCooldown(person.name)) {
       const lastPlayTime = personCooldowns.get(person.name);
-      const timeLeft = PERSON_COOLDOWN_MINUTES * 60 * 1000 - (Date.now() - lastPlayTime!);
+      const timeLeft =
+        PERSON_COOLDOWN_MINUTES * 60 * 1000 - (Date.now() - lastPlayTime!);
       const minutesLeft = Math.ceil(timeLeft / (60 * 1000));
-      console.log(`${person.name} is in cooldown for ${minutesLeft} more minutes`);
-      setAssistantStatus(`⏳ ${person.name} on cooldown (${minutesLeft}m left)`);
-      setTimeout(() => setAssistantStatus(''), 3000);
+      console.log(
+        `${person.name} is in cooldown for ${minutesLeft} more minutes`
+      );
+      setAssistantStatus(
+        `⏳ ${person.name} on cooldown (${minutesLeft}m left)`
+      );
+      setTimeout(() => setAssistantStatus(""), 3000);
       return;
     }
 
     console.log(`Starting description for ${person.name}`);
     // Track this person to prevent repeat calls
-    setPersonCooldowns(prev => new Map(prev.set(person.name, Date.now())));
+    setPersonCooldowns((prev) => new Map(prev.set(person.name, Date.now())));
     setLastApiCall(Date.now());
     setIsAssistantSpeaking(true);
     setAssistantStatus(`🎤 Describing ${person.name}...`);
-    
+
     try {
       // Only stop currently playing audio if this is a forced/manual play
       if (forcePlay && audioStreamerRef.current) {
@@ -169,25 +186,27 @@ You should act like a helpful assistant, providing context without needing to be
 
 Here's the person I see: This is ${person.name}, who is your ${person.relationship}. Description: ${person.description}`;
 
-      const response = await fetch('/api/gemini-tts', {
-        method: 'POST',
+      const response = await fetch("/api/gemini-tts", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ text: prompt }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
         throw new Error(`API Error: ${errorData.error || response.statusText}`);
       }
 
-      const contentType = response.headers.get('Content-Type');
-      
-      if (contentType?.includes('audio/pcm')) {
+      const contentType = response.headers.get("Content-Type");
+
+      if (contentType?.includes("audio/pcm")) {
         const pcmArrayBuffer = await response.arrayBuffer();
         setAssistantStatus(`🎵 Playing description for ${person.name}`);
-        
+
         // Use the audio streamer for proper playback
         if (audioStreamerRef.current && audioContextRef.current) {
           await audioStreamerRef.current.resume();
@@ -195,15 +214,16 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
           const pcmData = new Uint8Array(pcmArrayBuffer);
           audioStreamerRef.current.addPCM16(pcmData);
         } else {
-          throw new Error('Audio system not initialized');
+          throw new Error("Audio system not initialized");
         }
       }
-
     } catch (error) {
-      console.error('Assistant error:', error);
+      console.error("Assistant error:", error);
       setIsAssistantSpeaking(false);
-      setAssistantStatus(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setTimeout(() => setAssistantStatus(''), 5000);
+      setAssistantStatus(
+        `❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+      setTimeout(() => setAssistantStatus(""), 5000);
     }
   }; // end generatePersonDescription
 
@@ -254,7 +274,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
           let personInfo = {
             name: `Unknown (${(1 - distance).toFixed(2)})`,
             relationship: "",
-            description: ""
+            description: "",
           };
           let textColor = "#ff0000"; // Red for unknown
           let fullPersonData = null;
@@ -265,38 +285,45 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
               personInfo = {
                 name: person.name,
                 relationship: person.relationship,
-                description: person.description
+                description: person.description,
               };
               textColor = "#00ff00"; // Green for known
               fullPersonData = person;
-              
+
               // Add to detected persons for overlay buttons (only known persons)
               currentDetectedPersons.push({
                 person: person,
                 box: detection.detection.box,
-                textColor: textColor
+                textColor: textColor,
               });
-              
+
               // Call Gemini Live assistant to describe the person (only if conditions are met)
               // Add additional check to prevent repeated calls for the same person
               const currentTime = Date.now();
-              const shouldTrigger = isAssistantEnabled && 
-                                  !isAssistantSpeaking && 
-                                  !isPersonInCooldown(person.name) &&
-                                  !detectedPersonsRef.current.has(person.name) &&
-                                  (currentTime - lastDetectionTimeRef.current) > 1000; // 1 second minimum between any detections
-              
+              const shouldTrigger =
+                isAssistantEnabled &&
+                !isAssistantSpeaking &&
+                !isPersonInCooldown(person.name) &&
+                !detectedPersonsRef.current.has(person.name) &&
+                currentTime - lastDetectionTimeRef.current > 1000; // 1 second minimum between any detections
+
               // Debug logging for auto-trigger decisions
               if (isAssistantEnabled && !shouldTrigger) {
-                console.log(`Auto-trigger blocked for ${person.name}: speaking=${isAssistantSpeaking}, cooldown=${isPersonInCooldown(person.name)}, detected=${detectedPersonsRef.current.has(person.name)}`);
+                console.log(
+                  `Auto-trigger blocked for ${
+                    person.name
+                  }: speaking=${isAssistantSpeaking}, cooldown=${isPersonInCooldown(
+                    person.name
+                  )}, detected=${detectedPersonsRef.current.has(person.name)}`
+                );
               }
-              
+
               if (shouldTrigger) {
                 console.log(`Auto-triggering voice for ${person.name}`);
                 detectedPersonsRef.current.add(person.name);
                 lastDetectionTimeRef.current = currentTime;
                 generatePersonDescription(person);
-                
+
                 // Clear the detection flag after a delay to allow re-detection later
                 setTimeout(() => {
                   detectedPersonsRef.current.delete(person.name);
@@ -312,18 +339,25 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
             const drawContextInfo = (x: number, y: number, lines: string[]) => {
               const lineHeight = 22;
               const padding = 8;
-              const maxWidth = Math.max(...lines.map(line => ctx.measureText(line).width));
-              
+              const maxWidth = Math.max(
+                ...lines.map((line) => ctx.measureText(line).width)
+              );
+
               // Draw background rectangle
               ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-              ctx.fillRect(x - padding, y - padding, maxWidth + padding * 2, lines.length * lineHeight + padding);
-              
+              ctx.fillRect(
+                x - padding,
+                y - padding,
+                maxWidth + padding * 2,
+                lines.length * lineHeight + padding
+              );
+
               // Draw text lines
               ctx.fillStyle = textColor;
               ctx.font = "16px Arial";
               ctx.strokeStyle = "black";
               ctx.lineWidth = 2;
-              
+
               lines.forEach((line, index) => {
                 const lineY = y + index * lineHeight;
                 ctx.strokeText(line, x, lineY);
@@ -332,18 +366,22 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
             };
 
             // Mode 1: Just context info appearing
-            if (displayMode === 'name') {
+            if (displayMode === "name") {
               const lines = [
                 `👤 ${personInfo.name}`,
-                ...(personInfo.relationship ? [`💝 ${personInfo.relationship}`] : []),
-                ...(personInfo.description ? [`📝 ${personInfo.description}`] : [])
+                ...(personInfo.relationship
+                  ? [`💝 ${personInfo.relationship}`]
+                  : []),
+                ...(personInfo.description
+                  ? [`📝 ${personInfo.description}`]
+                  : []),
               ];
-              
+
               drawContextInfo(box.x, box.y - 10, lines);
             }
-            
+
             // Mode 2: Context info + box appearing
-            else if (displayMode === 'nameBox') {
+            else if (displayMode === "nameBox") {
               // Draw bounding box
               ctx.strokeStyle = textColor;
               ctx.lineWidth = 2;
@@ -352,16 +390,19 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
               // Draw context info
               const lines = [
                 `👤 ${personInfo.name}`,
-                ...(personInfo.relationship ? [`💝 ${personInfo.relationship}`] : []),
-                ...(personInfo.description ? [`📝 ${personInfo.description}`] : [])
+                ...(personInfo.relationship
+                  ? [`💝 ${personInfo.relationship}`]
+                  : []),
+                ...(personInfo.description
+                  ? [`📝 ${personInfo.description}`]
+                  : []),
               ];
-              
+
               drawContextInfo(box.x, box.y - 10, lines);
             }
-            
-            // Mode 3: Context info + box + face landmarks
-            else if (displayMode === 'nameLandmarks') {
 
+            // Mode 3: Context info + box + face landmarks
+            else if (displayMode === "nameLandmarks") {
               // Draw bounding box
               ctx.strokeStyle = textColor;
               ctx.lineWidth = 2;
@@ -377,16 +418,19 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                   ctx.fill();
                 });
               }
-              
+
               // Draw context info
               const lines = [
                 `👤 ${personInfo.name}`,
-                ...(personInfo.relationship ? [`💝 ${personInfo.relationship}`] : []),
-                ...(personInfo.description ? [`📝 ${personInfo.description}`] : [])
+                ...(personInfo.relationship
+                  ? [`💝 ${personInfo.relationship}`]
+                  : []),
+                ...(personInfo.description
+                  ? [`📝 ${personInfo.description}`]
+                  : []),
               ];
-              
-              drawContextInfo(box.x, box.y - 10, lines);
 
+              drawContextInfo(box.x, box.y - 10, lines);
             }
           }
         });
@@ -615,7 +659,12 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
         {user ? (
           <div className="space-y-4 sm:space-y-6 px-4 sm:px-0">
             {/* Welcome Section */}
-            <div className="bg-white/70 backdrop-blur-sm overflow-hidden shadow-xl rounded-2xl border border-blue-100">
+
+            {/* Face Detection Section */}
+            <div className="bg-white/70 backdrop-blur-sm rounded-2xl shadow-xl p-4 sm:p-6 border border-blue-100">
+              <h3 className="text-xl sm:text-2xl font-bold text-center mb-6 bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+                🧠 Face Recognition System
+              </h3>
               <div className="px-4 py-5 sm:p-6">
                 <h2 className="text-lg sm:text-xl font-bold text-slate-800 mb-4 flex items-center">
                   <span className="w-2 h-2 bg-green-500 rounded-full mr-3"></span>
@@ -623,30 +672,17 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                 </h2>
                 <p className="text-slate-600 mb-4 text-sm sm:text-base">
                   The face recognition system is active. Use the camera feed
-                  below to identify registered individuals.
+                  below to identify memories.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-3">
                   <Link
                     href="/person"
                     className="text-indigo-600 hover:underline font-medium"
                   >
-                    👥 Manage Registered Persons
-                  </Link>
-                  <Link
-                    href="/gemini-tts-test"
-                    className="text-green-600 hover:underline font-medium"
-                  >
-                    🎤 Test Gemini Text-to-Speech
+                    Manage Memories
                   </Link>
                 </div>
               </div>
-            </div>
-
-            {/* Face Detection Section */}
-            <div className="bg-white/70 backdrop-blur-sm rounded-2xl shadow-xl p-4 sm:p-6 border border-blue-100">
-              <h3 className="text-xl sm:text-2xl font-bold text-center mb-6 bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-                🧠 Face Recognition System
-              </h3>
 
               {error && (
                 <div className="bg-red-50 border-l-4 border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
@@ -658,130 +694,10 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
               )}
 
               <div className="text-center mb-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center lg:justify-center gap-3 lg:gap-6 mb-6">
-                  <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
-                    <div
-                      className={`w-3 h-3 rounded-full ${
-                        modelsLoaded ? "bg-green-500" : "bg-red-500"
-                      } animate-pulse`}
-                    ></div>
-                    <span className="text-slate-700 text-sm font-medium">
-                      Models: {modelsLoaded ? "✅ Loaded" : "⏳ Loading..."}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
-                    <div
-                      className={`w-3 h-3 rounded-full ${
-                        facesLoaded ? "bg-green-500" : "bg-red-500"
-                      } animate-pulse`}
-                    ></div>
-                    <span className="text-slate-700 text-sm font-medium">
-                      Faces:{" "}
-                      {facesLoaded
-                        ? `✅ ${dbPersons.length} Loaded`
-                        : "⏳ Loading..."}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
-                    <div
-                      className={`w-3 h-3 rounded-full ${
-                        isWebcamStarted ? "bg-green-500" : "bg-gray-400"
-                      } ${isWebcamStarted ? "animate-pulse" : ""}`}
-                    ></div>
-                    <span className="text-slate-700 text-sm font-medium">
-                      Camera: {isWebcamStarted ? "🎥 Active" : "📷 Inactive"}
-                    </span>
-                  </div>
-                  
-                  <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
-                    <div className={`w-3 h-3 rounded-full ${isAssistantEnabled ? (isAssistantSpeaking ? 'bg-orange-500 animate-pulse' : 'bg-blue-500') : 'bg-gray-400'}`}></div>
-                    <span className="text-slate-700 text-sm font-medium">
-                      Assistant: {
-                        isAssistantSpeaking ? '🗣️ Speaking' :
-                        isAssistantEnabled ? '🤖 Active' : 
-                        '🤖 Inactive'
-                      }
-                    </span>
-                  </div>
-                </div>
-
                 {/* Display Mode Toggle */}
-                <div className="mb-6">
-                  <h4 className="text-sm font-semibold text-slate-700 mb-3 text-center">
-                    🎯 Display Mode
-                  </h4>
-                  <div className="flex flex-col sm:flex-row justify-center gap-2 sm:gap-3">
-                    <button
-                      onClick={() => setDisplayMode("name")}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                        displayMode === "name"
-                          ? "bg-blue-500 text-white shadow-lg"
-                          : "bg-white/70 text-slate-700 hover:bg-blue-100"
-                      }`}
-                    >
-                      � Info Only
-                    </button>
-                    <button
-                      onClick={() => setDisplayMode("nameBox")}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                        displayMode === "nameBox"
-                          ? "bg-blue-500 text-white shadow-lg"
-                          : "bg-white/70 text-slate-700 hover:bg-blue-100"
-                      }`}
-                    >
-                      📦 Info + Box
-                    </button>
-                    <button
-                      onClick={() => setDisplayMode("nameLandmarks")}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                        displayMode === "nameLandmarks"
-                          ? "bg-blue-500 text-white shadow-lg"
-                          : "bg-white/70 text-slate-700 hover:bg-blue-100"
-                      }`}
-                    >
-                      🎯 Info + Box + Landmarks
-                    </button>
-                  </div>
-                </div>
-                
+
                 {/* AI Assistant Toggle */}
-                <div className="mb-6">
-                  <h4 className="text-sm font-semibold text-slate-700 mb-3 text-center">🤖 AI Assistant</h4>
-                  <div className="flex justify-center">
-                    <button
-                      onClick={() => setIsAssistantEnabled(!isAssistantEnabled)}
-                      className={`px-6 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
-                        isAssistantEnabled
-                          ? 'bg-blue-500 text-white shadow-lg'
-                          : 'bg-white/70 text-slate-700 hover:bg-blue-100'
-                      }`}
-                    >
-                      {isAssistantEnabled ? '🔊 Voice Assistant ON' : '🔇 Voice Assistant OFF'}
-                    </button>
-                  </div>
-                  <div className="flex justify-center mt-2">
-                    <button
-                      onClick={() => generatePersonDescription({ 
-                        name: "Test Person", 
-                        relationship: "friend", 
-                        description: "A wonderful test person" 
-                      }, true)}
-                      className="px-4 py-2 rounded-lg text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors mr-2"
-                      disabled={isAssistantSpeaking}
-                    >
-                      🧪 Test Assistant
-                    </button>
-                  </div>
-                  {assistantStatus && (
-                    <div className="mt-3 text-center">
-                      <span className="inline-block bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-medium">
-                        {assistantStatus}
-                      </span>
-                    </div>
-                  )}
-                </div>
+
                 {!isWebcamStarted && modelsLoaded && facesLoaded && (
                   <button
                     onClick={startVideo}
@@ -809,48 +725,56 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                     height="560"
                     className="absolute top-0 left-0 rounded-lg"
                   />
-                  
+
                   {/* Overlay Play Buttons for Detected Persons */}
                   {detectedPersons.map((detectedPerson, index) => {
                     const { person, box } = detectedPerson;
                     const isInCooldown = isPersonInCooldown(person.name);
                     const cooldownTime = personCooldowns.get(person.name);
                     let remainingMinutes = 0;
-                    
+
                     if (cooldownTime) {
-                      const timeLeft = (PERSON_COOLDOWN_MINUTES * 60 * 1000) - (Date.now() - cooldownTime);
+                      const timeLeft =
+                        PERSON_COOLDOWN_MINUTES * 60 * 1000 -
+                        (Date.now() - cooldownTime);
                       remainingMinutes = Math.ceil(timeLeft / (60 * 1000));
                     }
-                    
+
                     return (
                       <button
                         key={`${person.name}-${index}`}
                         onClick={() => {
                           generatePersonDescription(person, true);
                           // Reset cooldown when manually triggered
-                          setPersonCooldowns(prev => new Map(prev.set(person.name, Date.now())));
+                          setPersonCooldowns(
+                            (prev) => new Map(prev.set(person.name, Date.now()))
+                          );
                         }}
                         disabled={isAssistantSpeaking}
                         className={`absolute text-xs font-bold rounded-full w-8 h-8 flex items-center justify-center transition-all duration-200 hover:scale-110 ${
-                          isAssistantSpeaking 
-                            ? 'bg-gray-400 text-gray-600 cursor-not-allowed' 
-                            : isInCooldown 
-                              ? 'bg-orange-500 text-white hover:bg-orange-600' 
-                              : 'bg-green-500 text-white hover:bg-green-600'
+                          isAssistantSpeaking
+                            ? "bg-gray-400 text-gray-600 cursor-not-allowed"
+                            : isInCooldown
+                            ? "bg-orange-500 text-white hover:bg-orange-600"
+                            : "bg-green-500 text-white hover:bg-green-600"
                         }`}
                         style={{
                           left: `${box.x + box.width + 5}px`,
                           top: `${box.y}px`,
                         }}
                         title={
-                          isAssistantSpeaking 
-                            ? 'Assistant is currently speaking' 
-                            : isInCooldown 
-                              ? `Play ${person.name} (${remainingMinutes}m cooldown)` 
-                              : `Play ${person.name}`
+                          isAssistantSpeaking
+                            ? "Assistant is currently speaking"
+                            : isInCooldown
+                            ? `Play ${person.name} (${remainingMinutes}m cooldown)`
+                            : `Play ${person.name}`
                         }
                       >
-                        {isAssistantSpeaking ? '⏸' : isInCooldown ? `${remainingMinutes}` : '▶'}
+                        {isAssistantSpeaking
+                          ? "⏸"
+                          : isInCooldown
+                          ? `${remainingMinutes}`
+                          : "▶"}
                       </button>
                     );
                   })}
@@ -858,38 +782,6 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
               </div>
 
               {/* Audio is now handled by AudioStreamer - no need for HTML audio element */}
-
-              <div className="text-center bg-white/50 rounded-2xl p-4 border border-blue-100 mt-6">
-                <p className="text-sm sm:text-base text-slate-700">
-                  <span className="font-bold">🔍 Recognition Mode:</span> The system will identify registered individuals and display their context.
-
-                  <br />
-                  <span className="text-green-600 font-semibold">
-                    Green = Known person
-                  </span>
-                  ,{" "}
-                  <span className="text-red-500 font-semibold">
-                    Red = Unknown person
-                  </span>
-                  <br />
-                  <span className="font-bold">📋 Context Info:</span> Name, relationship, and description will be shown
-                  <br />
-                  <span className="font-bold">▶️ Play Buttons:</span> Click the green ▶ button next to detected persons to manually trigger voice descriptions and reset their cooldown
-                  <br />
-                  <span className="font-bold">🤖 AI Assistant:</span> {
-                    isAssistantSpeaking ? 'Currently speaking...' :
-                    isAssistantEnabled ? `Voice descriptions enabled (${PERSON_COOLDOWN_MINUTES}m cooldown)` : 
-                    'Voice descriptions disabled'
-                  }
-                  <br />
-                  <span className="font-bold">🎯 Current Display:</span> {
-                    displayMode === 'name' ? '📝 Context information only' :
-                    displayMode === 'nameBox' ? '📦 Context with bounding boxes' :
-                    '🎯 Context, boxes, and facial landmarks'
-                  }
-
-                </p>
-              </div>
             </div>
           </div>
         ) : (
