@@ -3,9 +3,226 @@
 import { useAuth } from '@/contexts/AuthContext'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
+import { useEffect, useRef, useState } from 'react'
+import * as faceapi from 'face-api.js'
 
 export default function Home() {
   const { user, loading, signOut } = useAuth()
+  
+  // Face detection states
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [modelsLoaded, setModelsLoaded] = useState(false)
+  const [isWebcamStarted, setIsWebcamStarted] = useState(false)
+  const [error, setError] = useState<string>('')
+  const [mode, setMode] = useState<'recognition' | 'registration'>('recognition')
+  const [isRegistering, setIsRegistering] = useState(false)
+  const [newPersonName, setNewPersonName] = useState('')
+  const [newPersonContext, setNewPersonContext] = useState('')
+  const [storedFaces, setStoredFaces] = useState<Array<{
+    name: string
+    context: string
+    descriptors: Float32Array[]
+  }>>([])
+  const [faceMatcher, setFaceMatcher] = useState<any>(null)
+
+  // Load face-api models when user is logged in
+  useEffect(() => {
+    if (!user) return
+
+    const loadModels = async () => {
+      try {
+        console.log('Loading Tiny Face Detector models...')
+        
+        // Load required models for face detection and recognition
+        await faceapi.nets.tinyFaceDetector.loadFromUri('/models')
+        await faceapi.nets.faceLandmark68Net.loadFromUri('/models')
+        await faceapi.nets.faceRecognitionNet.loadFromUri('/models')
+        
+        console.log('All models loaded successfully')
+        setModelsLoaded(true)
+      } catch (err) {
+        console.error('Error loading models:', err)
+        setError('Failed to load face detection models. Please ensure all model files are in the /public/models directory.')
+      }
+    }
+    
+    loadModels()
+  }, [user])
+
+  // Start webcam
+  const startVideo = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { width: 720, height: 560 } 
+      })
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        setIsWebcamStarted(true)
+      }
+    } catch (err) {
+      console.error('Error accessing webcam:', err)
+      setError('Failed to access webcam. Please allow camera permissions.')
+    }
+  }
+
+  // Register a new face
+  const registerFace = async () => {
+    if (!videoRef.current || !newPersonName.trim()) return
+    
+    setIsRegistering(true)
+    try {
+      const detections = await faceapi
+        .detectAllFaces(videoRef.current, new faceapi.TinyFaceDetectorOptions({
+          inputSize: 416,
+          scoreThreshold: 0.5
+        }))
+        .withFaceLandmarks()
+        .withFaceDescriptors()
+
+      if (detections.length === 0) {
+        setError('No face detected. Please ensure your face is clearly visible.')
+        return
+      }
+
+      if (detections.length > 1) {
+        setError('Multiple faces detected. Please ensure only one person is in frame.')
+        return
+      }
+
+      const descriptor = detections[0].descriptor
+      
+      // Store the new face
+      const newFace = {
+        name: newPersonName.trim(),
+        context: newPersonContext.trim(),
+        descriptors: [descriptor]
+      }
+
+      const updatedFaces = [...storedFaces, newFace]
+      setStoredFaces(updatedFaces)
+
+      // Update face matcher
+      const labeledDescriptors = updatedFaces.map(face => 
+        new faceapi.LabeledFaceDescriptors(face.name, face.descriptors)
+      )
+      setFaceMatcher(new faceapi.FaceMatcher(labeledDescriptors, 0.6))
+
+      // Reset form
+      setNewPersonName('')
+      setNewPersonContext('')
+      setMode('recognition')
+      setError('')
+      
+      console.log(`Successfully registered: ${newFace.name}`)
+    } catch (err) {
+      console.error('Error registering face:', err)
+      setError('Failed to register face. Please try again.')
+    } finally {
+      setIsRegistering(false)
+    }
+  }
+
+  // Detect faces in real-time
+  const handleVideoPlay = () => {
+    if (!videoRef.current || !canvasRef.current || !modelsLoaded) return
+
+    const canvas = canvasRef.current
+    const video = videoRef.current
+    
+    const displaySize = { width: video.width, height: video.height }
+    faceapi.matchDimensions(canvas, displaySize)
+
+    const detectFaces = async () => {
+      if (!video || !canvas) return
+
+      // Detect faces with landmarks and descriptors
+      const detections = await faceapi
+        .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({
+          inputSize: 416,
+          scoreThreshold: 0.5
+        }))
+        .withFaceLandmarks()
+        .withFaceDescriptors()
+
+      // Clear previous drawings
+      const ctx = canvas.getContext('2d')
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+      }
+
+      // Resize detections to match display size
+      const resizedDetections = faceapi.resizeResults(detections, displaySize)
+      
+      // Draw detections
+      faceapi.draw.drawDetections(canvas, resizedDetections)
+      faceapi.draw.drawFaceLandmarks(canvas, resizedDetections)
+
+      // Recognition mode: identify faces
+      if (mode === 'recognition' && faceMatcher && resizedDetections.length > 0) {
+        resizedDetections.forEach((detection, i) => {
+          const bestMatch = faceMatcher.findBestMatch(detection.descriptor)
+          const { label, distance } = bestMatch
+          
+          let displayText = ''
+          let textColor = '#ff0000' // Red for unknown
+          
+          if (label !== 'unknown') {
+            const confidence = Math.round((1 - distance) * 100)
+            displayText = `${label} (${confidence}%)`
+            textColor = '#00ff00' // Green for known faces
+            
+            // Find the person's context
+            const person = storedFaces.find(face => face.name === label)
+            if (person && person.context) {
+              displayText += `\n${person.context}`
+            }
+          } else {
+            displayText = 'Unknown Person'
+          }
+          
+          if (ctx) {
+            const box = detection.detection.box
+            ctx.fillStyle = textColor
+            ctx.font = '16px Arial'
+            ctx.strokeStyle = 'black'
+            ctx.lineWidth = 2
+            
+            // Draw text with background
+            const lines = displayText.split('\n')
+            lines.forEach((line, lineIndex) => {
+              const y = box.y - 30 + (lineIndex * 20)
+              ctx.strokeText(line, box.x, y)
+              ctx.fillText(line, box.x, y)
+            })
+          }
+        })
+      } else if (mode === 'registration') {
+        // Registration mode: show instructions
+        resizedDetections.forEach((detection, i) => {
+          const { score } = detection.detection
+          const text = detections.length === 1 ? 
+            'Ready to register!' : 
+            `${detections.length} faces detected - ensure only one person in frame`
+          
+          if (ctx) {
+            ctx.fillStyle = detections.length === 1 ? '#00ff00' : '#ff9900'
+            ctx.font = '16px Arial'
+            ctx.strokeStyle = 'black'
+            ctx.lineWidth = 2
+            ctx.strokeText(text, detection.detection.box.x, detection.detection.box.y - 10)
+            ctx.fillText(text, detection.detection.box.x, detection.detection.box.y - 10)
+          }
+        })
+      }
+    }
+
+    // Run detection every 100ms
+    const interval = setInterval(detectFaces, 100)
+    
+    return () => clearInterval(interval)
+  }
 
   const handleGoogleSignIn = async () => {
     const supabase = createClient()
@@ -70,14 +287,14 @@ export default function Home() {
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         {user ? (
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <h2 className="text-lg font-medium text-gray-900 mb-4">Welcome to Memory Care</h2>
-              <p className="text-gray-600">
-                You are successfully logged in! This is your dashboard where you can manage your memory care activities.
-              </p>
-              <div className="mt-6">
-                <h3 className="text-md font-medium text-gray-900 mb-2">Your Account Details:</h3>
+          <div className="space-y-6">
+            {/* Welcome Section */}
+            <div className="bg-white overflow-hidden shadow rounded-lg">
+              <div className="px-4 py-5 sm:p-6">
+                <h2 className="text-lg font-medium text-gray-900 mb-4">Welcome to Memory Care</h2>
+                <p className="text-gray-600 mb-4">
+                  Use the face recognition system below to help identify people in your life.
+                </p>
                 <div className="bg-gray-50 p-4 rounded-md">
                   <p><strong>Email:</strong> {user.email}</p>
                   <p><strong>User ID:</strong> {user.id}</p>
@@ -86,6 +303,166 @@ export default function Home() {
                     <p><strong>Sign-in Method:</strong> {user.app_metadata.provider}</p>
                   )}
                 </div>
+              </div>
+            </div>
+
+            {/* Face Detection Section */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h3 className="text-xl font-semibold text-center mb-6 text-gray-800">
+                Face Recognition System
+              </h3>
+              
+              {error && (
+                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+                  {error}
+                </div>
+              )}
+
+              <div className="text-center mb-6">
+                <div className="flex items-center justify-center gap-4 mb-4">
+                  <div className={`w-4 h-4 rounded-full ${modelsLoaded ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                  <span className="text-gray-700">
+                    Models: {modelsLoaded ? 'Loaded' : 'Loading...'}
+                  </span>
+                  
+                  <div className={`w-4 h-4 rounded-full ${isWebcamStarted ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                  <span className="text-gray-700">
+                    Camera: {isWebcamStarted ? 'Active' : 'Inactive'}
+                  </span>
+
+                  <div className="text-gray-700">
+                    Stored Faces: {storedFaces.length}
+                  </div>
+                </div>
+
+                {!isWebcamStarted && modelsLoaded && (
+                  <button
+                    onClick={startVideo}
+                    className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mr-4"
+                  >
+                    Start Camera
+                  </button>
+                )}
+
+                {isWebcamStarted && (
+                  <div className="flex justify-center gap-4 mb-4">
+                    <button
+                      onClick={() => setMode('recognition')}
+                      className={`px-4 py-2 rounded font-medium ${
+                        mode === 'recognition'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                    >
+                      Recognition Mode
+                    </button>
+                    <button
+                      onClick={() => setMode('registration')}
+                      className={`px-4 py-2 rounded font-medium ${
+                        mode === 'registration'
+                          ? 'bg-green-500 text-white'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                    >
+                      Add New Face
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Registration Form */}
+              {mode === 'registration' && isWebcamStarted && (
+                <div className="bg-gray-50 p-4 rounded-lg mb-6">
+                  <h4 className="text-lg font-semibold mb-4">Register New Person</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Name (required)
+                      </label>
+                      <input
+                        type="text"
+                        value={newPersonName}
+                        onChange={(e) => setNewPersonName(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Enter person's name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Context (optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={newPersonContext}
+                        onChange={(e) => setNewPersonContext(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="e.g., Daughter, Son, Caregiver, Friend"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    onClick={registerFace}
+                    disabled={!newPersonName.trim() || isRegistering}
+                    className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    {isRegistering ? 'Registering...' : 'Register Face'}
+                  </button>
+                </div>
+              )}
+
+              {/* Stored Faces List */}
+              {storedFaces.length > 0 && (
+                <div className="bg-gray-50 p-4 rounded-lg mb-6">
+                  <h4 className="text-lg font-semibold mb-4">Registered People</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {storedFaces.map((face, index) => (
+                      <div key={index} className="bg-white p-3 rounded border">
+                        <div className="font-medium text-gray-800">{face.name}</div>
+                        {face.context && (
+                          <div className="text-sm text-gray-600">{face.context}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="relative flex justify-center">
+                <div className="relative">
+                  <video
+                    ref={videoRef}
+                    width="720"
+                    height="560"
+                    autoPlay
+                    muted
+                    onPlay={handleVideoPlay}
+                    className="rounded-lg border-2 border-gray-300"
+                  />
+                  <canvas
+                    ref={canvasRef}
+                    width="720"
+                    height="560"
+                    className="absolute top-0 left-0 rounded-lg"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 text-center text-gray-600">
+                <p className="text-sm">
+                  {mode === 'recognition' ? (
+                    <>
+                      <strong>Recognition Mode:</strong> Known faces will be identified with their names.
+                      <br />
+                      Green text = Known person, Red text = Unknown person
+                    </>
+                  ) : (
+                    <>
+                      <strong>Registration Mode:</strong> Position yourself in frame and click "Register Face".
+                      <br />
+                      Ensure only one person is visible for best results.
+                    </>
+                  )}
+                </p>
               </div>
             </div>
           </div>
