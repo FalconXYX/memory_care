@@ -35,10 +35,12 @@ export default function Home() {
   const [isAssistantEnabled, setIsAssistantEnabled] = useState(false);
   const [assistantStatus, setAssistantStatus] = useState<string>('');
   const [isAssistantSpeaking, setIsAssistantSpeaking] = useState(false);
-  const [lastDescribedPerson, setLastDescribedPerson] = useState<{name: string, time: number} | null>(null);
   const [lastApiCall, setLastApiCall] = useState<number>(0);
   // Track last time any speech finished for global cooldown
   const [lastSpeechTime, setLastSpeechTime] = useState<number>(0);
+  
+  // Hashmap to track last voice play time for each person
+  const [personCooldowns, setPersonCooldowns] = useState<Map<string, number>>(new Map());
   
   // Cooldown configuration in minutes
   const PERSON_COOLDOWN_MINUTES = 5;
@@ -57,13 +59,20 @@ export default function Home() {
   const detectedPersonsRef = useRef<Set<string>>(new Set());
   const lastDetectionTimeRef = useRef<number>(0);
 
-  // Simple cooldown check
+  // Simple cooldown check using hashmap
   const isPersonInCooldown = (personName: string): boolean => {
-    if (!lastDescribedPerson) return false;
-    if (lastDescribedPerson.name !== personName) return false;
+    const lastPlayTime = personCooldowns.get(personName);
+    if (!lastPlayTime) return false;
     
     const cooldownMs = PERSON_COOLDOWN_MINUTES * 60 * 1000;
-    return (Date.now() - lastDescribedPerson.time) < cooldownMs;
+    const isInCooldown = (Date.now() - lastPlayTime) < cooldownMs;
+    
+    if (isInCooldown) {
+      const timeLeft = cooldownMs - (Date.now() - lastPlayTime);
+      console.log(`${personName} is in cooldown for ${Math.ceil(timeLeft / (60 * 1000))} more minutes`);
+    }
+    
+    return isInCooldown;
   };
 
   // Initialize audio context and streamer
@@ -111,7 +120,8 @@ export default function Home() {
     
     // Check cooldown for same person (unless force play)
     if (!forcePlay && isPersonInCooldown(person.name)) {
-      const timeLeft = PERSON_COOLDOWN_MINUTES * 60 * 1000 - (Date.now() - lastDescribedPerson!.time);
+      const lastPlayTime = personCooldowns.get(person.name);
+      const timeLeft = PERSON_COOLDOWN_MINUTES * 60 * 1000 - (Date.now() - lastPlayTime!);
       const minutesLeft = Math.ceil(timeLeft / (60 * 1000));
       console.log(`${person.name} is in cooldown for ${minutesLeft} more minutes`);
       setAssistantStatus(`⏳ ${person.name} on cooldown (${minutesLeft}m left)`);
@@ -121,7 +131,7 @@ export default function Home() {
 
     console.log(`Starting description for ${person.name}`);
     // Track this person to prevent repeat calls
-    setLastDescribedPerson({ name: person.name, time: Date.now() });
+    setPersonCooldowns(prev => new Map(prev.set(person.name, Date.now())));
     setLastApiCall(Date.now());
     setIsAssistantSpeaking(true);
     setAssistantStatus(`🎤 Describing ${person.name}...`);
@@ -160,9 +170,6 @@ export default function Home() {
           // Convert ArrayBuffer to Uint8Array and stream it
           const pcmData = new Uint8Array(pcmArrayBuffer);
           audioStreamerRef.current.addPCM16(pcmData);
-          
-          // Set cooldown
-          setLastDescribedPerson({ name: person.name, time: Date.now() });
         } else {
           throw new Error('Audio system not initialized');
         }
@@ -717,20 +724,6 @@ export default function Home() {
                     >
                       🧪 Test Assistant
                     </button>
-                    
-                    {/* Manual play for last recognized person */}
-                    {lastDescribedPerson && (
-                      <button
-                        onClick={() => {
-                          const person = dbPersons.find(p => p.name === lastDescribedPerson.name);
-                          if (person) generatePersonDescription(person, true);
-                        }}
-                        className="px-4 py-2 rounded-lg text-xs font-medium bg-green-200 text-green-700 hover:bg-green-300 transition-colors"
-                        disabled={isAssistantSpeaking}
-                      >
-                        🔊 Repeat {lastDescribedPerson.name}
-                      </button>
-                    )}
                   </div>
                   {assistantStatus && (
                     <div className="mt-3 text-center">
