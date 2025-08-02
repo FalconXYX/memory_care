@@ -15,214 +15,182 @@ export default function Home() {
   const [modelsLoaded, setModelsLoaded] = useState(false)
   const [isWebcamStarted, setIsWebcamStarted] = useState(false)
   const [error, setError] = useState<string>('')
-  const [mode, setMode] = useState<'recognition' | 'registration'>('recognition')
-  const [isRegistering, setIsRegistering] = useState(false)
-  const [newPersonName, setNewPersonName] = useState('')
-  const [newPersonContext, setNewPersonContext] = useState('')
-  const [storedFaces, setStoredFaces] = useState<Array<{
-    name: string
-    context: string
-    descriptors: Float32Array[]
-  }>>([])
   const [faceMatcher, setFaceMatcher] = useState<any>(null)
+  const [dbPersons, setDbPersons] = useState<Array<{
+    id: string;
+    name: string;
+    description: string;
+    relationship: string;
+    presignedImageUrl?: string;
+  }>>([]);
+  const [facesLoaded, setFacesLoaded] = useState(false);
+  const [debugMode, setDebugMode] = useState(false)
 
-  // Load face-api models when user is logged in
+  // Load face-api models and fetch faces from DB
   useEffect(() => {
-    if (!user) return
+    if (!user) return;
 
-    const loadModels = async () => {
+    const loadAssets = async () => {
       try {
-        console.log('Loading Tiny Face Detector models...')
-        
-        // Load required models for face detection and recognition
-        await faceapi.nets.tinyFaceDetector.loadFromUri('/models')
-        await faceapi.nets.faceLandmark68Net.loadFromUri('/models')
-        await faceapi.nets.faceRecognitionNet.loadFromUri('/models')
-        
-        console.log('All models loaded successfully')
-        setModelsLoaded(true)
+        // Load face-api models
+        await faceapi.nets.tinyFaceDetector.loadFromUri("/models");
+        await faceapi.nets.faceLandmark68Net.loadFromUri("/models");
+        await faceapi.nets.faceRecognitionNet.loadFromUri("/models");
+        setModelsLoaded(true);
+
+        // Fetch persons from the database
+        const response = await fetch(`/api/persons?userId=${user.id}`);
+        if (!response.ok) {
+          throw new Error("Failed to fetch persons from the database.");
+        }
+        const persons = await response.json();
+        setDbPersons(persons);
+
+        // Load faces and create a face matcher
+        await loadFacesFromDB(persons);
       } catch (err) {
-        console.error('Error loading models:', err)
-        setError('Failed to load face detection models. Please ensure all model files are in the /public/models directory.')
+        setError(
+          "Failed to load assets. Please check the console for more details."
+        );
+        console.error(err);
       }
+    };
+
+    loadAssets();
+  }, [user]);
+
+  // Load faces from the database and create a face matcher
+  const loadFacesFromDB = async (persons: any[]) => {
+    if (persons.length === 0) {
+      setFacesLoaded(true);
+      return;
     }
-    
-    loadModels()
-  }, [user])
+
+    try {
+      const labeledDescriptors = await Promise.all(
+        persons.map(async (person) => {
+          if (!person.presignedImageUrl) return null;
+
+          try {
+            const img = await faceapi.fetchImage(person.presignedImageUrl);
+            const detection = await faceapi
+              .detectSingleFace(
+                img,
+                new faceapi.TinyFaceDetectorOptions({
+                  inputSize: 416,
+                  scoreThreshold: 0.5,
+                })
+              )
+              .withFaceLandmarks()
+              .withFaceDescriptor();
+
+            if (detection) {
+              return new faceapi.LabeledFaceDescriptors(person.name, [
+                detection.descriptor,
+              ]);
+            }
+            return null;
+          } catch (e) {
+            console.error(`Failed to load image for ${person.name}`, e);
+            return null;
+          }
+        })
+      );
+
+      const validDescriptors = labeledDescriptors.filter(
+        (d) => d !== null
+      ) as faceapi.LabeledFaceDescriptors[];
+
+      if (validDescriptors.length > 0) {
+        const matcher = new faceapi.FaceMatcher(validDescriptors, 0.6);
+        setFaceMatcher(matcher);
+      }
+    } catch (err) {
+      setError("Failed to build face matcher from database.");
+      console.error(err);
+    } finally {
+      setFacesLoaded(true);
+    }
+  };
 
   // Start webcam
   const startVideo = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { width: 720, height: 560 } 
-      })
-      
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 720, height: 560 },
+      });
+
       if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        setIsWebcamStarted(true)
+        videoRef.current.srcObject = stream;
+        setIsWebcamStarted(true);
       }
     } catch (err) {
-      console.error('Error accessing webcam:', err)
-      setError('Failed to access webcam. Please allow camera permissions.')
+      setError("Failed to access webcam. Please allow camera permissions.");
     }
-  }
-
-  // Register a new face
-  const registerFace = async () => {
-    if (!videoRef.current || !newPersonName.trim()) return
-    
-    setIsRegistering(true)
-    try {
-      const detections = await faceapi
-        .detectAllFaces(videoRef.current, new faceapi.TinyFaceDetectorOptions({
-          inputSize: 416,
-          scoreThreshold: 0.5
-        }))
-        .withFaceLandmarks()
-        .withFaceDescriptors()
-
-      if (detections.length === 0) {
-        setError('No face detected. Please ensure your face is clearly visible.')
-        return
-      }
-
-      if (detections.length > 1) {
-        setError('Multiple faces detected. Please ensure only one person is in frame.')
-        return
-      }
-
-      const descriptor = detections[0].descriptor
-      
-      // Store the new face
-      const newFace = {
-        name: newPersonName.trim(),
-        context: newPersonContext.trim(),
-        descriptors: [descriptor]
-      }
-
-      const updatedFaces = [...storedFaces, newFace]
-      setStoredFaces(updatedFaces)
-
-      // Update face matcher
-      const labeledDescriptors = updatedFaces.map(face => 
-        new faceapi.LabeledFaceDescriptors(face.name, face.descriptors)
-      )
-      setFaceMatcher(new faceapi.FaceMatcher(labeledDescriptors, 0.6))
-
-      // Reset form
-      setNewPersonName('')
-      setNewPersonContext('')
-      setMode('recognition')
-      setError('')
-      
-      console.log(`Successfully registered: ${newFace.name}`)
-    } catch (err) {
-      console.error('Error registering face:', err)
-      setError('Failed to register face. Please try again.')
-    } finally {
-      setIsRegistering(false)
-    }
-  }
+  };
 
   // Detect faces in real-time
   const handleVideoPlay = () => {
-    if (!videoRef.current || !canvasRef.current || !modelsLoaded) return
+    if (!videoRef.current || !canvasRef.current || !modelsLoaded) return;
 
-    const canvas = canvasRef.current
-    const video = videoRef.current
-    
-    const displaySize = { width: video.width, height: video.height }
-    faceapi.matchDimensions(canvas, displaySize)
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+
+    const displaySize = { width: video.width, height: video.height };
+    faceapi.matchDimensions(canvas, displaySize);
 
     const detectFaces = async () => {
-      if (!video || !canvas) return
+      if (!video || !canvas) return;
 
-      // Detect faces with landmarks and descriptors
       const detections = await faceapi
-        .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({
-          inputSize: 416,
-          scoreThreshold: 0.5
-        }))
+        .detectAllFaces(
+          video,
+          new faceapi.TinyFaceDetectorOptions({
+            inputSize: 416,
+            scoreThreshold: 0.5,
+          })
+        )
         .withFaceLandmarks()
-        .withFaceDescriptors()
+        .withFaceDescriptors();
 
-      // Clear previous drawings
-      const ctx = canvas.getContext('2d')
+      const ctx = canvas.getContext("2d");
       if (ctx) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height)
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
       }
 
-      // Resize detections to match display size
-      const resizedDetections = faceapi.resizeResults(detections, displaySize)
-      
-      // Draw detections
-      faceapi.draw.drawDetections(canvas, resizedDetections)
-      faceapi.draw.drawFaceLandmarks(canvas, resizedDetections)
+      const resizedDetections = faceapi.resizeResults(detections, displaySize);
 
-      // Recognition mode: identify faces
-      if (mode === 'recognition' && faceMatcher && resizedDetections.length > 0) {
-        resizedDetections.forEach((detection, i) => {
-          const bestMatch = faceMatcher.findBestMatch(detection.descriptor)
-          const { label, distance } = bestMatch
-          
-          let displayText = ''
-          let textColor = '#ff0000' // Red for unknown
-          
-          if (label !== 'unknown') {
-            const confidence = Math.round((1 - distance) * 100)
-            displayText = `${label} (${confidence}%)`
-            textColor = '#00ff00' // Green for known faces
-            
-            // Find the person's context
-            const person = storedFaces.find(face => face.name === label)
-            if (person && person.context) {
-              displayText += `\n${person.context}`
-            }
-          } else {
-            displayText = 'Unknown Person'
+      if (faceMatcher && resizedDetections.length > 0) {
+        resizedDetections.forEach((detection) => {
+          const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
+          const { label, distance } = bestMatch;
+
+          let displayText = `Unknown (${(1 - distance).toFixed(2)})`;
+          let textColor = "#ff0000"; // Red for unknown
+
+          if (label !== "unknown") {
+            const person = dbPersons.find((p) => p.name === label);
+            displayText = `${person?.name} (${person?.relationship})`;
+            textColor = "#00ff00"; // Green for known
           }
-          
+
           if (ctx) {
-            const box = detection.detection.box
-            ctx.fillStyle = textColor
-            ctx.font = '16px Arial'
-            ctx.strokeStyle = 'black'
-            ctx.lineWidth = 2
-            
-            // Draw text with background
-            const lines = displayText.split('\n')
-            lines.forEach((line, lineIndex) => {
-              const y = box.y - 30 + (lineIndex * 20)
-              ctx.strokeText(line, box.x, y)
-              ctx.fillText(line, box.x, y)
-            })
+            const box = detection.detection.box;
+            ctx.fillStyle = textColor;
+            ctx.font = "20px Arial";
+            ctx.strokeStyle = "black";
+            ctx.lineWidth = 3;
+            ctx.strokeText(displayText, box.x, box.y - 10);
+            ctx.fillText(displayText, box.x, box.y - 10);
           }
-        })
-      } else if (mode === 'registration') {
-        // Registration mode: show instructions
-        resizedDetections.forEach((detection, i) => {
-          const { score } = detection.detection
-          const text = detections.length === 1 ? 
-            'Ready to register!' : 
-            `${detections.length} faces detected - ensure only one person in frame`
-          
-          if (ctx) {
-            ctx.fillStyle = detections.length === 1 ? '#00ff00' : '#ff9900'
-            ctx.font = '16px Arial'
-            ctx.strokeStyle = 'black'
-            ctx.lineWidth = 2
-            ctx.strokeText(text, detection.detection.box.x, detection.detection.box.y - 10)
-            ctx.fillText(text, detection.detection.box.x, detection.detection.box.y - 10)
-          }
-        })
+        });
       }
-    }
+    };
 
-    // Run detection every 100ms
-    const interval = setInterval(detectFaces, 100)
-    
-    return () => clearInterval(interval)
-  }
+    const interval = setInterval(detectFaces, 100);
+
+    return () => clearInterval(interval);
+  };
 
   const handleGoogleSignIn = async () => {
     const supabase = createClient()
@@ -236,30 +204,37 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-green-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-200 border-t-blue-500 mx-auto"></div>
+          <p className="mt-4 text-slate-600 text-lg">Loading Memory Care...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
+      <nav className="bg-white/80 backdrop-blur-sm shadow-sm border-b border-blue-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
+          <div className="flex justify-between h-16 sm:h-20">
             <div className="flex items-center">
-              <h1 className="text-xl font-semibold text-gray-900">Memory Care App</h1>
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-green-500 rounded-xl flex items-center justify-center">
+                  <span className="text-white font-bold text-lg">MC</span>
+                </div>
+                <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+                  Memory Care
+                </h1>
+              </div>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2 sm:space-x-4">
               {user ? (
                 <>
-                  <span className="text-gray-700">Welcome, {user.email}</span>
+                  <span className="hidden sm:block text-slate-600 text-sm">Welcome, {user.email}</span>
                   <button
                     onClick={signOut}
-                    className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+                    className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-3 sm:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg"
                   >
                     Sign Out
                   </button>
@@ -268,13 +243,13 @@ export default function Home() {
                 <>
                   <Link
                     href="/login"
-                    className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                    className="text-slate-600 hover:text-blue-600 px-3 py-2 rounded-xl text-sm font-medium transition-colors duration-200"
                   >
                     Sign In
                   </Link>
                   <Link
                     href="/signup"
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+                    className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white px-3 sm:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg"
                   >
                     Sign Up
                   </Link>
@@ -287,146 +262,73 @@ export default function Home() {
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         {user ? (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6 px-4 sm:px-0">
             {/* Welcome Section */}
-            <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="bg-white/70 backdrop-blur-sm overflow-hidden shadow-xl rounded-2xl border border-blue-100">
               <div className="px-4 py-5 sm:p-6">
-                <h2 className="text-lg font-medium text-gray-900 mb-4">Welcome to Memory Care</h2>
-                <p className="text-gray-600 mb-4">
-                  Use the face recognition system below to help identify people in your life.
+                <h2 className="text-lg sm:text-xl font-bold text-slate-800 mb-4 flex items-center">
+                  <span className="w-2 h-2 bg-green-500 rounded-full mr-3"></span>
+                  Welcome to Memory Care
+                </h2>
+                <p className="text-slate-600 mb-4 text-sm sm:text-base">
+                  The face recognition system is active. Use the camera feed below to identify registered individuals.
                 </p>
-                <div className="bg-gray-50 p-4 rounded-md">
-                  <p><strong>Email:</strong> {user.email}</p>
-                  <p><strong>User ID:</strong> {user.id}</p>
-                  <p><strong>Last Sign In:</strong> {new Date(user.last_sign_in_at || '').toLocaleString()}</p>
-                  {user.app_metadata?.provider && (
-                    <p><strong>Sign-in Method:</strong> {user.app_metadata.provider}</p>
-                  )}
-                </div>
+                <Link href="/person" className="text-indigo-600 hover:underline">
+                  Manage Registered Persons
+                </Link>
               </div>
             </div>
 
             {/* Face Detection Section */}
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h3 className="text-xl font-semibold text-center mb-6 text-gray-800">
-                Face Recognition System
+            <div className="bg-white/70 backdrop-blur-sm rounded-2xl shadow-xl p-4 sm:p-6 border border-blue-100">
+              <h3 className="text-xl sm:text-2xl font-bold text-center mb-6 bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+                🧠 Face Recognition System
               </h3>
               
               {error && (
-                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-                  {error}
+                <div className="bg-red-50 border-l-4 border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
+                  <div className="flex items-center">
+                    <span className="text-red-500 mr-2">⚠️</span>
+                    {error}
+                  </div>
                 </div>
               )}
 
               <div className="text-center mb-6">
-                <div className="flex items-center justify-center gap-4 mb-4">
-                  <div className={`w-4 h-4 rounded-full ${modelsLoaded ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                  <span className="text-gray-700">
-                    Models: {modelsLoaded ? 'Loaded' : 'Loading...'}
-                  </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center lg:justify-center gap-3 lg:gap-6 mb-6">
+                  <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
+                    <div className={`w-3 h-3 rounded-full ${modelsLoaded ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
+                    <span className="text-slate-700 text-sm font-medium">
+                      Models: {modelsLoaded ? '✅ Loaded' : '⏳ Loading...'}
+                    </span>
+                  </div>
                   
-                  <div className={`w-4 h-4 rounded-full ${isWebcamStarted ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-                  <span className="text-gray-700">
-                    Camera: {isWebcamStarted ? 'Active' : 'Inactive'}
-                  </span>
-
-                  <div className="text-gray-700">
-                    Stored Faces: {storedFaces.length}
+                  <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
+                    <div className={`w-3 h-3 rounded-full ${facesLoaded ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
+                    <span className="text-slate-700 text-sm font-medium">
+                      Faces: {facesLoaded ? `✅ ${dbPersons.length} Loaded` : '⏳ Loading...'}
+                    </span>
+                  </div>
+                  
+                  <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
+                    <div className={`w-3 h-3 rounded-full ${isWebcamStarted ? 'bg-green-500' : 'bg-gray-400'} ${isWebcamStarted ? 'animate-pulse' : ''}`}></div>
+                    <span className="text-slate-700 text-sm font-medium">
+                      Camera: {isWebcamStarted ? '🎥 Active' : '📷 Inactive'}
+                    </span>
                   </div>
                 </div>
 
-                {!isWebcamStarted && modelsLoaded && (
+                {!isWebcamStarted && modelsLoaded && facesLoaded && (
                   <button
                     onClick={startVideo}
-                    className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mr-4"
+                    className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg"
                   >
-                    Start Camera
+                    🎥 Start Camera
                   </button>
-                )}
-
-                {isWebcamStarted && (
-                  <div className="flex justify-center gap-4 mb-4">
-                    <button
-                      onClick={() => setMode('recognition')}
-                      className={`px-4 py-2 rounded font-medium ${
-                        mode === 'recognition'
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                    >
-                      Recognition Mode
-                    </button>
-                    <button
-                      onClick={() => setMode('registration')}
-                      className={`px-4 py-2 rounded font-medium ${
-                        mode === 'registration'
-                          ? 'bg-green-500 text-white'
-                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
-                    >
-                      Add New Face
-                    </button>
-                  </div>
                 )}
               </div>
 
-              {/* Registration Form */}
-              {mode === 'registration' && isWebcamStarted && (
-                <div className="bg-gray-50 p-4 rounded-lg mb-6">
-                  <h4 className="text-lg font-semibold mb-4">Register New Person</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Name (required)
-                      </label>
-                      <input
-                        type="text"
-                        value={newPersonName}
-                        onChange={(e) => setNewPersonName(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Enter person's name"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Context (optional)
-                      </label>
-                      <input
-                        type="text"
-                        value={newPersonContext}
-                        onChange={(e) => setNewPersonContext(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="e.g., Daughter, Son, Caregiver, Friend"
-                      />
-                    </div>
-                  </div>
-                  <button
-                    onClick={registerFace}
-                    disabled={!newPersonName.trim() || isRegistering}
-                    className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded disabled:bg-gray-400 disabled:cursor-not-allowed"
-                  >
-                    {isRegistering ? 'Registering...' : 'Register Face'}
-                  </button>
-                </div>
-              )}
-
-              {/* Stored Faces List */}
-              {storedFaces.length > 0 && (
-                <div className="bg-gray-50 p-4 rounded-lg mb-6">
-                  <h4 className="text-lg font-semibold mb-4">Registered People</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {storedFaces.map((face, index) => (
-                      <div key={index} className="bg-white p-3 rounded border">
-                        <div className="font-medium text-gray-800">{face.name}</div>
-                        {face.context && (
-                          <div className="text-sm text-gray-600">{face.context}</div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
+              {/* Camera Container */}
               <div className="relative flex justify-center">
                 <div className="relative">
                   <video
@@ -447,21 +349,11 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="mt-6 text-center text-gray-600">
-                <p className="text-sm">
-                  {mode === 'recognition' ? (
-                    <>
-                      <strong>Recognition Mode:</strong> Known faces will be identified with their names.
-                      <br />
-                      Green text = Known person, Red text = Unknown person
-                    </>
-                  ) : (
-                    <>
-                      <strong>Registration Mode:</strong> Position yourself in frame and click "Register Face".
-                      <br />
-                      Ensure only one person is visible for best results.
-                    </>
-                  )}
+              <div className="text-center bg-white/50 rounded-2xl p-4 border border-blue-100 mt-6">
+                <p className="text-sm sm:text-base text-slate-700">
+                  <span className="font-bold">🔍 Recognition Mode:</span> The system will identify registered individuals.
+                  <br />
+                  <span className="text-green-600 font-semibold">Green text = Known person</span>, <span className="text-red-500 font-semibold">Red text = Unknown person</span>
                 </p>
               </div>
             </div>
