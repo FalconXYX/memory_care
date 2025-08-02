@@ -551,6 +551,13 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
       console.error(err);
     } finally {
       setFacesLoaded(true);
+      // Auto-start the camera when everything is loaded
+      startVideo().catch((err) => {
+        console.error("Failed to auto-start camera:", err);
+        setError(
+          "Failed to auto-start camera. Please check your camera permissions."
+        );
+      });
     }
   };
 
@@ -659,30 +666,33 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
         {user ? (
           <div className="space-y-4 sm:space-y-6 px-4 sm:px-0">
             {/* Welcome Section */}
-
-            {/* Face Detection Section */}
-            <div className="bg-white/70 backdrop-blur-sm rounded-2xl shadow-xl p-4 sm:p-6 border border-blue-100">
-              <h3 className="text-xl sm:text-2xl font-bold text-center mb-6 bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-                🧠 Face Recognition System
-              </h3>
+            <div className="bg-white/70 backdrop-blur-sm overflow-hidden shadow-xl rounded-2xl border border-blue-100">
               <div className="px-4 py-5 sm:p-6">
                 <h2 className="text-lg sm:text-xl font-bold text-slate-800 mb-4 flex items-center">
                   <span className="w-2 h-2 bg-green-500 rounded-full mr-3"></span>
                   Welcome to Memory Care
                 </h2>
                 <p className="text-slate-600 mb-4 text-sm sm:text-base">
-                  The face recognition system is active. Use the camera feed
-                  below to identify memories.
+                  Your personal memory assistant is ready to help identify and
+                  remember faces.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-3">
                   <Link
                     href="/person"
-                    className="text-indigo-600 hover:underline font-medium"
+                    className="inline-flex items-center px-4 py-2 rounded-xl bg-gradient-to-r from-blue-500 to-green-500 hover:from-indigo-600 hover:to-blue-600 text-white font-medium transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
                   >
+                    <span className="mr-2 text-lg">👥</span>
                     Manage Memories
                   </Link>
                 </div>
               </div>
+            </div>
+
+            {/* Face Detection Section */}
+            <div className="bg-white/70 backdrop-blur-sm rounded-2xl shadow-xl p-4 sm:p-6 border border-blue-100">
+              <h3 className="text-xl sm:text-2xl font-bold text-center mb-6 bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+                🧠 Face Recognition System
+              </h3>
 
               {error && (
                 <div className="bg-red-50 border-l-4 border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
@@ -693,18 +703,14 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                 </div>
               )}
 
-              <div className="text-center mb-6">
-                {/* Display Mode Toggle */}
-
-                {/* AI Assistant Toggle */}
-
-                {!isWebcamStarted && modelsLoaded && facesLoaded && (
-                  <button
-                    onClick={startVideo}
-                    className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg"
-                  >
-                    🎥 Start Camera
-                  </button>
+              <div className="flex flex-col items-center gap-4 mb-6">
+                {!isWebcamStarted && !modelsLoaded && !facesLoaded && (
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-4 border-blue-200 border-t-blue-500 mx-auto"></div>
+                    <p className="mt-2 text-slate-600">
+                      Initializing camera...
+                    </p>
+                  </div>
                 )}
               </div>
               {/* Camera Container */}
