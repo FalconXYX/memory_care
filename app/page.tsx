@@ -28,6 +28,7 @@ export default function Home() {
   const [displayMode, setDisplayMode] = useState<'name' | 'nameBox' | 'nameLandmarks'>(
     'name'
   )
+  const [isFullscreen, setIsFullscreen] = useState(true)
 
   // Load face-api models and fetch faces from DB
   useEffect(() => {
@@ -51,6 +52,11 @@ export default function Home() {
 
         // Load faces and create a face matcher
         await loadFacesFromDB(persons);
+        
+        // Auto-start camera after models and faces are loaded
+        setTimeout(() => {
+          startVideo();
+        }, 500);
       } catch (err) {
         setError(
           "Failed to load assets. Please check the console for more details."
@@ -242,6 +248,116 @@ export default function Home() {
     return () => clearInterval(interval);
   };
 
+  // Continuous face detection that updates with display mode changes
+  useEffect(() => {
+    if (!isWebcamStarted || !videoRef.current || !canvasRef.current || !modelsLoaded) return;
+
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+
+    const displaySize = { width: video.width, height: video.height };
+    faceapi.matchDimensions(canvas, displaySize);
+
+    const detectFaces = async () => {
+      if (!video || !canvas) return;
+
+      const detections = await faceapi
+        .detectAllFaces(
+          video,
+          new faceapi.TinyFaceDetectorOptions({
+            inputSize: 416,
+            scoreThreshold: 0.5,
+          })
+        )
+        .withFaceLandmarks()
+        .withFaceDescriptors();
+
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+
+      const resizedDetections = faceapi.resizeResults(detections, displaySize);
+
+      if (faceMatcher && resizedDetections.length > 0) {
+        resizedDetections.forEach((detection) => {
+          const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
+          const { label, distance } = bestMatch;
+
+          let displayText = `Unknown (${(1 - distance).toFixed(2)})`;
+          let textColor = "#ff0000"; // Red for unknown
+
+          if (label !== "unknown") {
+            const person = dbPersons.find((p) => p.name === label);
+            displayText = `${person?.name} (${person?.relationship})`;
+            textColor = "#00ff00"; // Green for known
+          }
+
+          if (ctx) {
+            const box = detection.detection.box;
+
+            // Mode 1: Just name appearing
+            if (displayMode === 'name') {
+              ctx.fillStyle = textColor;
+              ctx.font = "20px Arial";
+              ctx.strokeStyle = "black";
+              ctx.lineWidth = 3;
+              ctx.strokeText(displayText, box.x, box.y - 10);
+              ctx.fillText(displayText, box.x, box.y - 10);
+            }
+            
+            // Mode 2: Name + box appearing
+            else if (displayMode === 'nameBox') {
+              // Draw bounding box
+              ctx.strokeStyle = textColor;
+              ctx.lineWidth = 2;
+              ctx.strokeRect(box.x, box.y, box.width, box.height);
+              
+              // Draw text
+              ctx.fillStyle = textColor;
+              ctx.font = "20px Arial";
+              ctx.strokeStyle = "black";
+              ctx.lineWidth = 3;
+              ctx.strokeText(displayText, box.x, box.y - 10);
+              ctx.fillText(displayText, box.x, box.y - 10);
+            }
+            
+            // Mode 3: Name + box + face landmarks
+            else if (displayMode === 'nameLandmarks') {
+              // Draw bounding box
+              ctx.strokeStyle = textColor;
+              ctx.lineWidth = 2;
+              ctx.strokeRect(box.x, box.y, box.width, box.height);
+              
+              // Draw landmarks
+              const landmarks = detection.landmarks;
+              if (landmarks) {
+                ctx.fillStyle = textColor;
+                landmarks.positions.forEach((point) => {
+                  ctx.beginPath();
+                  ctx.arc(point.x, point.y, 1, 0, 2 * Math.PI);
+                  ctx.fill();
+                });
+              }
+              
+              // Draw text
+              ctx.fillStyle = textColor;
+              ctx.font = "20px Arial";
+              ctx.strokeStyle = "black";
+              ctx.lineWidth = 3;
+              ctx.strokeText(displayText, box.x, box.y - 10);
+              ctx.fillText(displayText, box.x, box.y - 10);
+            }
+          }
+        });
+      }
+    };
+
+    const interval = setInterval(detectFaces, 100);
+
+    return () => clearInterval(interval);
+  }, [isWebcamStarted, modelsLoaded, faceMatcher, displayMode, dbPersons]);
+
   const handleGoogleSignIn = async () => {
     const supabase = createClient();
     await supabase.auth.signInWithOAuth({
@@ -265,53 +381,132 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
-      <nav className="bg-white/80 backdrop-blur-sm shadow-sm border-b border-blue-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 sm:h-20">
-            <div className="flex items-center">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-green-500 rounded-xl flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">MC</span>
-                </div>
-                <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-                  Memory Care
-                </h1>
+      {/* Fullscreen Camera Mode */}
+      {isFullscreen && user && isWebcamStarted ? (
+        <div className="fixed inset-0 bg-black z-50 flex flex-col">
+          {/* Exit Fullscreen Button */}
+          <div className="absolute top-4 right-4 z-60">
+            <button
+              onClick={() => setIsFullscreen(false)}
+              className="bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white p-3 rounded-full transition-all duration-200 shadow-lg"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Display Mode Toggle in Fullscreen */}
+          <div className="absolute top-4 left-4 z-60">
+            <div className="bg-white/20 backdrop-blur-sm rounded-lg p-2">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setDisplayMode('name')}
+                  className={`px-3 py-1 rounded text-sm font-medium transition-all duration-200 ${
+                    displayMode === 'name'
+                      ? 'bg-white text-black'
+                      : 'bg-white/20 text-white hover:bg-white/30'
+                  }`}
+                >
+                  📝
+                </button>
+                <button
+                  onClick={() => setDisplayMode('nameBox')}
+                  className={`px-3 py-1 rounded text-sm font-medium transition-all duration-200 ${
+                    displayMode === 'nameBox'
+                      ? 'bg-white text-black'
+                      : 'bg-white/20 text-white hover:bg-white/30'
+                  }`}
+                >
+                  📦
+                </button>
+                <button
+                  onClick={() => setDisplayMode('nameLandmarks')}
+                  className={`px-3 py-1 rounded text-sm font-medium transition-all duration-200 ${
+                    displayMode === 'nameLandmarks'
+                      ? 'bg-white text-black'
+                      : 'bg-white/20 text-white hover:bg-white/30'
+                  }`}
+                >
+                  🎯
+                </button>
               </div>
             </div>
-            <div className="flex items-center space-x-2 sm:space-x-4">
-              {user ? (
-                <>
-                  <span className="hidden sm:block text-slate-600 text-sm">Welcome, {user.email}</span>
-                  <button
-                    onClick={signOut}
-                    className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-3 sm:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg"
-                  >
-                    Sign Out
-                  </button>
-                </>
-              ) : (
-                <>
-                  <Link
-                    href="/login"
-                    className="text-slate-600 hover:text-blue-600 px-3 py-2 rounded-xl text-sm font-medium transition-colors duration-200"
-                  >
-                    Sign In
-                  </Link>
-                  <Link
-                    href="/signup"
-                    className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white px-3 sm:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg"
-                  >
-                    Sign Up
-                  </Link>
-                </>
-              )}
+          </div>
+
+          {/* Fullscreen Camera */}
+          <div className="flex-1 flex items-center justify-center">
+            <div className="relative">
+              <video
+                ref={videoRef}
+                width="1280"
+                height="720"
+                autoPlay
+                muted
+                onPlay={handleVideoPlay}
+                className="rounded-lg"
+                style={{ maxWidth: '95vw', maxHeight: '95vh' }}
+              />
+              <canvas
+                ref={canvasRef}
+                width="1280"
+                height="720"
+                className="absolute top-0 left-0 rounded-lg"
+                style={{ maxWidth: '95vw', maxHeight: '95vh' }}
+              />
             </div>
           </div>
         </div>
-      </nav>
+      ) : (
+        /* Regular Mode */
+        <>
+          <nav className={`bg-white/80 backdrop-blur-sm shadow-sm border-b border-blue-100 ${isFullscreen ? 'hidden' : ''}`}>
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex justify-between h-16 sm:h-20">
+                <div className="flex items-center">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-green-500 rounded-xl flex items-center justify-center">
+                      <span className="text-white font-bold text-lg">MC</span>
+                    </div>
+                    <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+                      Memory Care
+                    </h1>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2 sm:space-x-4">
+                  {user ? (
+                    <>
+                      <span className="hidden sm:block text-slate-600 text-sm">Welcome, {user.email}</span>
+                      <button
+                        onClick={signOut}
+                        className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-3 sm:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg"
+                      >
+                        Sign Out
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <Link
+                        href="/login"
+                        className="text-slate-600 hover:text-blue-600 px-3 py-2 rounded-xl text-sm font-medium transition-colors duration-200"
+                      >
+                        Sign In
+                      </Link>
+                      <Link
+                        href="/signup"
+                        className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white px-3 sm:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg"
+                      >
+                        Sign Up
+                      </Link>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </nav>
 
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {user ? (
+          <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+            {user ? (
           <div className="space-y-4 sm:space-y-6 px-4 sm:px-0">
             {/* Welcome Section */}
             <div className="bg-white/70 backdrop-blur-sm overflow-hidden shadow-xl rounded-2xl border border-blue-100">
@@ -410,17 +605,11 @@ export default function Home() {
                   </div>
                 </div>
                 
-                {!isWebcamStarted && modelsLoaded && facesLoaded && (
-                  <button
-                    onClick={startVideo}
-                    className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg"
-                  >
-                    🎥 Start Camera
-                  </button>
-                )}
+                {/* Remove the manual start button since camera auto-starts */}
               </div>
-              {/* Camera Container */}
-              <div className="relative flex justify-center">
+              
+              {/* Camera Container and Fullscreen Button */}
+              <div className="relative flex flex-col items-center gap-4">
                 <div className="relative">
                   <video
                     ref={videoRef}
@@ -438,6 +627,16 @@ export default function Home() {
                     className="absolute top-0 left-0 rounded-lg"
                   />
                 </div>
+                
+                {/* Fullscreen Button */}
+                {isWebcamStarted && (
+                  <button
+                    onClick={() => setIsFullscreen(true)}
+                    className="bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg"
+                  >
+                    📺 Go Fullscreen
+                  </button>
+                )}
               </div>
 
               <div className="text-center bg-white/50 rounded-2xl p-4 border border-blue-100 mt-6">
@@ -525,6 +724,8 @@ export default function Home() {
           </div>
         )}
       </main>
+        </>
+      )}
     </div>
   );
 }
