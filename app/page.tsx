@@ -37,6 +37,10 @@ export default function Home() {
   // Track last time any speech finished for global cooldown
   const [lastSpeechTime, setLastSpeechTime] = useState<number>(0);
   
+  // Camera flip functionality
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([]);
+  
   // Hashmap to track last voice play time for each person
   const [personCooldowns, setPersonCooldowns] = useState<Map<string, number>>(new Map());
   
@@ -92,6 +96,50 @@ export default function Home() {
     };
   }, []);
 
+  // Enumerate available cameras
+  const getAvailableCameras = async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(device => device.kind === 'videoinput');
+      setAvailableCameras(videoDevices);
+      return videoDevices;
+    } catch (error) {
+      console.error('Error getting available cameras:', error);
+      return [];
+    }
+  };
+
+  // Switch camera function
+  const flipCamera = async () => {
+    if (!videoRef.current) return;
+    
+    try {
+      // Stop current stream
+      const currentStream = videoRef.current.srcObject as MediaStream;
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+      }
+
+      // Toggle facing mode
+      const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
+      
+      // Get new stream with opposite camera
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { 
+          width: 720, 
+          height: 560,
+          facingMode: newFacingMode
+        },
+      });
+
+      videoRef.current.srcObject = stream;
+      setFacingMode(newFacingMode);
+    } catch (error) {
+      console.error('Error flipping camera:', error);
+      setError("Failed to flip camera. This device may only have one camera.");
+    }
+  };
+
   // Simple cooldown check using hashmap
   const isPersonInCooldown = (personName: string): boolean => {
     const lastPlayTime = personCooldowns.get(personName);
@@ -121,6 +169,11 @@ export default function Home() {
         };
       });
     }
+  }, []);
+
+  // Initialize available cameras on component mount
+  useEffect(() => {
+    getAvailableCameras();
   }, []);
 
   // Simple function to call Gemini Live API for person description
@@ -510,8 +563,15 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
   // Start webcam and enter fullscreen
   const startVideoAndFullscreen = async () => {
     try {
+      // Get available cameras first
+      await getAvailableCameras();
+      
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 720, height: 560 },
+        video: { 
+          width: 720, 
+          height: 560,
+          facingMode: facingMode
+        },
       });
 
       if (videoRef.current) {
@@ -751,12 +811,23 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                           </button>
                         )}
                         {isWebcamStarted && !isFullscreen && (
-                          <button
-                            onClick={enterFullscreen}
-                            className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg"
-                          >
-                            📺 Enter Full Screen
-                          </button>
+                          <div className="flex gap-3 flex-wrap justify-center">
+                            <button
+                              onClick={enterFullscreen}
+                              className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg"
+                            >
+                              📺 Enter Full Screen
+                            </button>
+                            {availableCameras.length > 1 && (
+                              <button
+                                onClick={flipCamera}
+                                className="bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg"
+                                title={`Switch to ${facingMode === 'user' ? 'back' : 'front'} camera`}
+                              >
+                                🔄 Flip Camera
+                              </button>
+                            )}
+                          </div>
                         )}
                       </>
                     )}
@@ -774,18 +845,18 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                     autoPlay
                     muted
                     onPlay={handleVideoPlay}
-                    className={`${isFullscreen ? 'max-h-full max-w-full' : 'rounded-lg border-2 border-gray-300'}`}
+                    className={`${isFullscreen ? 'max-h-full max-w-full' : 'rounded-lg border-2 border-gray-300'} ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`}
                     style={isFullscreen ? { height: '100vh', width: 'auto' } : {}}
                   />
                   <canvas
                     ref={canvasRef}
                     width="720"
                     height="560"
-                    className={`absolute top-0 left-0 ${isFullscreen ? '' : 'rounded-lg'}`}
+                    className={`absolute top-0 left-0 ${isFullscreen ? '' : 'rounded-lg'} ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`}
                     style={isFullscreen ? { 
                       height: '100vh', 
                       width: 'auto',
-                      transform: 'scale(1)',
+                      transform: `scale(${facingMode === 'user' ? '-1, 1' : '1, 1'})`,
                       transformOrigin: 'center'
                     } : {}}
                   />
@@ -826,6 +897,19 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                           ❌ Exit Fullscreen
                         </button>
                       </div>
+                      
+                      {/* Flip Camera Button - Bottom Right */}
+                      {availableCameras.length > 1 && (
+                        <div className="absolute bottom-4 right-4 pointer-events-auto">
+                          <button
+                            onClick={flipCamera}
+                            className="bg-gray-700/80 hover:bg-gray-600/80 text-white font-bold py-3 px-4 rounded-full shadow-lg transition-all duration-200 backdrop-blur-sm"
+                            title={`Switch to ${facingMode === 'user' ? 'back' : 'front'} camera`}
+                          >
+                            🔄 Flip Camera
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                   
