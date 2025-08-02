@@ -5,12 +5,12 @@ import {
   uploadFileToS3,
   deleteFileFromS3,
 } from "@/lib/supabase/s3";
-import prisma from "@/lib/prisma"; // Shared Prisma instance
+import prisma from "@/lib/prisma";
 
 // GET /api/persons/[personId]
 export async function GET(
   request: NextRequest,
-  context: { params: { personId: string } }
+  context: { params: Promise<{ personId: string }> }
 ) {
   try {
     const authenticatedUser = await getAuthenticatedUser();
@@ -18,7 +18,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { personId } = context.params;
+    const { personId } = await context.params;
 
     const person = await prisma.person.findUnique({
       where: { id: personId, userId: authenticatedUser.id },
@@ -48,7 +48,7 @@ export async function GET(
 // PUT /api/persons/[personId]
 export async function PUT(
   request: NextRequest,
-  context: { params: { personId: string } }
+  context: { params: Promise<{ personId: string }> }
 ) {
   try {
     const authenticatedUser = await getAuthenticatedUser();
@@ -56,7 +56,7 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { personId } = context.params;
+    const { personId } = await context.params;
 
     // Ensure the user record exists to avoid FK issues
     await prisma.user.upsert({
@@ -127,7 +127,7 @@ export async function PUT(
 // DELETE /api/persons/[personId]
 export async function DELETE(
   request: NextRequest,
-  context: { params: { personId: string } }
+  context: { params: Promise<{ personId: string }> }
 ) {
   try {
     const authenticatedUser = await getAuthenticatedUser();
@@ -135,7 +135,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { personId } = context.params;
+    const { personId } = await context.params;
 
     const existingPerson = await prisma.person.findUnique({
       where: { id: personId, userId: authenticatedUser.id },

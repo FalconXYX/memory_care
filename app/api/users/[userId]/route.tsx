@@ -5,7 +5,7 @@ import prisma from "@/lib/prisma";
 // GET /api/users/[userId]
 export async function GET(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
     const authenticatedUser = await getAuthenticatedUser();
@@ -13,7 +13,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { userId } = params;
+    const { userId } = await params;
 
     if (authenticatedUser.id !== userId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -45,7 +45,7 @@ export async function GET(
 // PUT /api/users/[userId]
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
     const authenticatedUser = await getAuthenticatedUser();
@@ -53,7 +53,7 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { userId } = params;
+    const { userId } = await params;
 
     if (authenticatedUser.id !== userId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -87,7 +87,7 @@ export async function PUT(
 // DELETE /api/users/[userId]
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
     const authenticatedUser = await getAuthenticatedUser();
@@ -95,7 +95,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { userId } = params;
+    const { userId } = await params;
 
     if (authenticatedUser.id !== userId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
