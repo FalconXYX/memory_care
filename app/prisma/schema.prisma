@@ -17,7 +17,7 @@ model MemoryAnchor {
   id          String   @id @default(uuid())
   title       String
   description String
-  audioUrl    String
+  imageUrl    String 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
