@@ -10,25 +10,18 @@ datasource db {
 
 model User {
   id            String         @id @db.Uuid
-  memoryAnchors MemoryAnchor[]
-}
-
-model MemoryAnchor {
-  id          String   @id @default(uuid())
-  title       String
-  description String
-  audioUrl    String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String @db.Uuid
-  person   Person @relation(fields: [personId], references: [id], onDelete: Cascade)
-  personId String @db.Uuid
+  description   String 
+  Person Person[]
 }
 
 model Person {
   id            String         @id @default(uuid())
   name          String
   description   String
-  memoryAnchors MemoryAnchor[]
+  relationship  String
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String          @db.Uuid
+  imageUrl      String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 }
