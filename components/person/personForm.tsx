@@ -2,7 +2,7 @@
 
 import { useState, FormEvent, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, User, Upload, Save, X, Camera, Trash2 } from "lucide-react";
+import { ArrowLeft, User, Upload, Save, X, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 interface Person {
@@ -23,13 +23,9 @@ export default function PersonFormPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [showCamera, setShowCamera] = useState(false);
-  const [stream, setStream] = useState<MediaStream | null>(null);
   
   const router = useRouter();
   const params = useParams();
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Determine if we're in edit mode
@@ -64,15 +60,6 @@ export default function PersonFormPage() {
     }
   }, [isEditMode, personId]);
 
-  // Cleanup camera stream on unmount
-  useEffect(() => {
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, [stream]);
-
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -85,63 +72,6 @@ export default function PersonFormPage() {
       };
       reader.readAsDataURL(file);
     }
-  };
-
-  const startCamera = async () => {
-    try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480, facingMode: 'user' }
-      });
-      
-      setStream(mediaStream);
-      setShowCamera(true);
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-      }
-    } catch (err) {
-      setError("Failed to access camera. Please check permissions.");
-      console.error("Camera error:", err);
-    }
-  };
-
-  const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      setStream(null);
-    }
-    setShowCamera(false);
-  };
-
-  const capturePhoto = () => {
-    if (!videoRef.current || !canvasRef.current) return;
-
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const context = canvas.getContext('2d');
-
-    if (!context) return;
-
-    // Set canvas dimensions to match video
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
-    // Draw the video frame to canvas
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    // Convert canvas to blob
-    canvas.toBlob((blob) => {
-      if (blob) {
-        // Create a File object from the blob
-        const file = new File([blob], `camera-capture-${Date.now()}.jpg`, {
-          type: 'image/jpeg'
-        });
-        
-        setImage(file);
-        setImagePreview(canvas.toDataURL('image/jpeg'));
-        stopCamera();
-      }
-    }, 'image/jpeg', 0.8);
   };
 
   const removeAttachment = () => {
@@ -265,44 +195,6 @@ export default function PersonFormPage() {
             </div>
           </div>
 
-          {/* Camera Modal */}
-          {showCamera && (
-            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-                <div className="text-center mb-4">
-                  <h3 className="text-lg font-semibold text-slate-800 mb-2">Take Photo</h3>
-                  <p className="text-sm text-slate-600">Position the person's face in the center</p>
-                </div>
-                
-                <div className="relative mb-4">
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    className="w-full rounded-xl border-2 border-blue-200"
-                  />
-                  <canvas ref={canvasRef} className="hidden" />
-                </div>
-                
-                <div className="flex gap-3">
-                  <button
-                    onClick={stopCamera}
-                    className="flex-1 px-4 py-2 border border-slate-300 rounded-xl text-slate-700 hover:bg-slate-50 transition-colors duration-200"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={capturePhoto}
-                    className="flex-1 px-4 py-2 bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white rounded-xl transition-all duration-200"
-                  >
-                    <Camera className="w-4 h-4 mr-2 inline" />
-                    Capture
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Form Section */}
           <div className="bg-white/70 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-blue-100">
             {error && (
@@ -411,31 +303,22 @@ export default function PersonFormPage() {
                   </div>
                 )}
                 
-                {/* Upload options */}
+                {/* Upload option */}
                 <div className="space-y-3">
-                  <div className="flex gap-3">
-                    <button
-                      type="button"
-                      onClick={startCamera}
-                      className="flex-1 inline-flex items-center justify-center px-4 py-3 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white rounded-xl shadow-md hover:shadow-lg transition-all duration-200 text-sm font-medium"
-                    >
-                      <Camera className="w-4 h-4 mr-2" />
-                      Take Photo
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="flex-1 inline-flex items-center justify-center px-4 py-3 bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white rounded-xl shadow-md hover:shadow-lg transition-all duration-200 text-sm font-medium"
-                    >
-                      <Upload className="w-4 h-4 mr-2" />
-                      Upload File
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full inline-flex items-center justify-center px-4 py-3 bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white rounded-xl shadow-md hover:shadow-lg transition-all duration-200 text-sm font-medium"
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    {imagePreview ? "Change Photo" : "Add a Photo"}
+                  </button>
                   
                   <input
                     ref={fileInputRef}
                     type="file"
                     accept="image/*"
+                    capture="environment"
                     onChange={handleImageChange}
                     className="hidden"
                     required={!isEditMode && !image}
@@ -443,7 +326,7 @@ export default function PersonFormPage() {
                 </div>
                 
                 <p className="text-xs text-slate-500 mt-2">
-                  Choose a clear photo showing the person's face for best recognition results
+                  Choose a clear photo showing the person's face for best recognition results. On mobile devices, you can take a photo directly or choose from your gallery.
                 </p>
               </div>
               
