@@ -34,7 +34,7 @@ export default function Home() {
   >("name");
   const [isAssistantEnabled, setIsAssistantEnabled] = useState(false);
   const [assistantStatus, setAssistantStatus] = useState<string>("");
-  const [isAssistantSpeaking, setIsAssistantSpeaking] = useState(false);
+  const [isAssistantSpeaking, setIsAssistantSpeaking] = useState(true);
   const [lastApiCall, setLastApiCall] = useState<number>(0);
   // Track last time any speech finished for global cooldown
   const [lastSpeechTime, setLastSpeechTime] = useState<number>(0);
