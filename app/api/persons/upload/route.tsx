@@ -35,19 +35,32 @@ export async function POST(request: Request) {
 
     // Ensure a user record exists before creating a person.
     // This prevents foreign key constraint errors.
-    await prisma.$executeRaw`
-      INSERT INTO "User" (id, description) 
-      VALUES (${authenticatedUser.id}::uuid, 'New user profile')
-      ON CONFLICT (id) DO NOTHING
-    `;
+    await prisma.user.upsert({
+      where: { id: authenticatedUser.id },
+      update: {},
+      create: {
+        id: authenticatedUser.id,
+        description: 'New user profile'
+      }
+    });
 
-        // Create person record with UUID casting
-    const result = await prisma.$executeRaw`
-      INSERT INTO "Person" (name, "imageKey", "userId")
-      VALUES (${name}, ${key}, ${authenticatedUser.id}::uuid)
-    `;
+    // Create person record using Prisma ORM
+    const person = await prisma.person.create({
+      data: {
+        name,
+        description,
+        relationship,
+        imageUrl: key,
+        userId: authenticatedUser.id
+      }
+    });
 
-    return NextResponse.json({ name, imageKey: key, userId: authenticatedUser.id }, { status: 201 });
+    return NextResponse.json({ 
+      id: person.id,
+      name: person.name, 
+      imageUrl: person.imageUrl, 
+      userId: person.userId 
+    }, { status: 201 });
   } catch (error) {
     console.error("Error creating person:", error);
     return NextResponse.json(
