@@ -25,6 +25,7 @@ export default function Home() {
     descriptors: Float32Array[]
   }>>([])
   const [faceMatcher, setFaceMatcher] = useState<any>(null)
+  const [referenceImageLoaded, setReferenceImageLoaded] = useState(false)
 
   // Load face-api models when user is logged in
   useEffect(() => {
@@ -41,6 +42,9 @@ export default function Home() {
         
         console.log('All models loaded successfully')
         setModelsLoaded(true)
+
+        // Load reference image for Thomas
+        await loadReferenceImage()
       } catch (err) {
         console.error('Error loading models:', err)
         setError('Failed to load face detection models. Please ensure all model files are in the /public/models directory.')
@@ -49,6 +53,42 @@ export default function Home() {
     
     loadModels()
   }, [user])
+
+  // Load reference image and create face matcher
+  const loadReferenceImage = async () => {
+    try {
+      console.log('Loading reference image...')
+      
+      // Load the reference image
+      const img = await faceapi.fetchImage('/onePersonFace.png')
+      
+      // Detect face in reference image
+      const detection = await faceapi
+        .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptor()
+
+      if (detection) {
+        // Create labeled face descriptor for Thomas
+        const labeledDescriptor = new faceapi.LabeledFaceDescriptors(
+          'Thomas',
+          [detection.descriptor]
+        )
+        
+        // Create face matcher
+        const matcher = new faceapi.FaceMatcher([labeledDescriptor], 0.6)
+        setFaceMatcher(matcher)
+        setReferenceImageLoaded(true)
+        
+        console.log('Reference image loaded and processed successfully')
+      } else {
+        setError('No face detected in reference image (onePersonFace.png)')
+      }
+    } catch (err) {
+      console.error('Error loading reference image:', err)
+      setError('Failed to load reference image. Please ensure onePersonFace.png is in the /public directory.')
+    }
+  }
 
   // Start webcam
   const startVideo = async () => {
@@ -168,16 +208,10 @@ export default function Home() {
           let displayText = ''
           let textColor = '#ff0000' // Red for unknown
           
-          if (label !== 'unknown') {
+          if (label === 'Thomas') {
             const confidence = Math.round((1 - distance) * 100)
-            displayText = `${label} (${confidence}%)`
-            textColor = '#00ff00' // Green for known faces
-            
-            // Find the person's context
-            const person = storedFaces.find(face => face.name === label)
-            if (person && person.context) {
-              displayText += `\n${person.context}`
-            }
+            displayText = `Thomas (${confidence}%)`
+            textColor = '#00ff00' // Green for Thomas
           } else {
             displayText = 'Unknown Person'
           }
@@ -185,17 +219,14 @@ export default function Home() {
           if (ctx) {
             const box = detection.detection.box
             ctx.fillStyle = textColor
-            ctx.font = '16px Arial'
+            ctx.font = '20px Arial'
             ctx.strokeStyle = 'black'
-            ctx.lineWidth = 2
+            ctx.lineWidth = 3
             
-            // Draw text with background
-            const lines = displayText.split('\n')
-            lines.forEach((line, lineIndex) => {
-              const y = box.y - 30 + (lineIndex * 20)
-              ctx.strokeText(line, box.x, y)
-              ctx.fillText(line, box.x, y)
-            })
+            // Draw text with background for better visibility
+            const y = box.y - 10
+            ctx.strokeText(displayText, box.x, y)
+            ctx.fillText(displayText, box.x, y)
           }
         })
       } else if (mode === 'registration') {
@@ -325,17 +356,18 @@ export default function Home() {
                     Models: {modelsLoaded ? 'Loaded' : 'Loading...'}
                   </span>
                   
+                  <div className={`w-4 h-4 rounded-full ${referenceImageLoaded ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                  <span className="text-gray-700">
+                    Thomas Reference: {referenceImageLoaded ? 'Loaded' : 'Loading...'}
+                  </span>
+                  
                   <div className={`w-4 h-4 rounded-full ${isWebcamStarted ? 'bg-green-500' : 'bg-gray-400'}`}></div>
                   <span className="text-gray-700">
                     Camera: {isWebcamStarted ? 'Active' : 'Inactive'}
                   </span>
-
-                  <div className="text-gray-700">
-                    Stored Faces: {storedFaces.length}
-                  </div>
                 </div>
 
-                {!isWebcamStarted && modelsLoaded && (
+                {!isWebcamStarted && modelsLoaded && referenceImageLoaded && (
                   <button
                     onClick={startVideo}
                     className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mr-4"
@@ -451,9 +483,9 @@ export default function Home() {
                 <p className="text-sm">
                   {mode === 'recognition' ? (
                     <>
-                      <strong>Recognition Mode:</strong> Known faces will be identified with their names.
+                      <strong>Recognition Mode:</strong> The system will detect if Thomas is in the camera view.
                       <br />
-                      Green text = Known person, Red text = Unknown person
+                      Green text = Thomas detected, Red text = Unknown person
                     </>
                   ) : (
                     <>
