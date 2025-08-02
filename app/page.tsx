@@ -73,10 +73,11 @@ export default function Home() {
   };
 
   const exitFullscreen = async () => {
-    if (document.exitFullscreen) {
+    // Only try to exit fullscreen if we're actually in fullscreen mode
+    if (document.fullscreenElement && document.exitFullscreen) {
       await document.exitFullscreen();
-      setIsFullscreen(false);
     }
+    setIsFullscreen(false);
   };
 
   // Listen for fullscreen changes (e.g., ESC key)
@@ -245,6 +246,12 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
 
       if (!video || !canvas) return;
 
+      // Check if video has valid dimensions
+      if (video.videoWidth === 0 || video.videoHeight === 0) {
+        console.log('Video dimensions not ready yet');
+        return;
+      }
+
       const detections = await faceapi
         .detectAllFaces(
           video,
@@ -261,7 +268,16 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       }
 
-      const displaySize = { width: video.width, height: video.height };
+      // Use video's actual dimensions instead of element dimensions
+      const displaySize = { width: video.videoWidth, height: video.videoHeight };
+      
+      // Ensure canvas matches video dimensions
+      if (canvas.width !== displaySize.width || canvas.height !== displaySize.height) {
+        canvas.width = displaySize.width;
+        canvas.height = displaySize.height;
+        faceapi.matchDimensions(canvas, displaySize);
+      }
+
       const resizedDetections = faceapi.resizeResults(detections, displaySize);
 
       // Collect detected persons for overlay buttons
@@ -516,7 +532,17 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
     const canvas = canvasRef.current;
     const video = videoRef.current;
 
-    const displaySize = { width: video.width, height: video.height };
+    // Wait for video to have valid dimensions
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      console.log('Video not ready, waiting...');
+      setTimeout(handleVideoPlay, 100);
+      return;
+    }
+
+    // Set canvas dimensions to match video
+    const displaySize = { width: video.videoWidth, height: video.videoHeight };
+    canvas.width = displaySize.width;
+    canvas.height = displaySize.height;
     faceapi.matchDimensions(canvas, displaySize);
 
     startFaceDetection();
@@ -544,223 +570,263 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
-      <nav className="bg-white/80 backdrop-blur-sm shadow-sm border-b border-blue-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 sm:h-20">
-            <div className="flex items-center">
-              <div className="flex items-center space-x-3">
-                <img
-                  src="/logo.png"
-                  alt="Memory Care Logo"
-                  className="w-16 h-16 object-contain"
-                />
-                <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-                  Memory Care
-                </h1>
-              </div>
-            </div>
-            <div className="flex items-center space-x-2 sm:space-x-4">
-              {user ? (
-                <>
-                  <span className="hidden sm:block text-slate-600 text-sm">
-                    Welcome, {user.email}
-                  </span>
-                  <button
-                    onClick={signOut}
-                    className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-3 sm:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg"
-                  >
-                    Sign Out
-                  </button>
-                </>
-              ) : (
-                <>
-                  <Link
-                    href="/login"
-                    className="text-slate-600 hover:text-blue-600 px-3 py-2 rounded-xl text-sm font-medium transition-colors duration-200"
-                  >
-                    Sign In
-                  </Link>
-                  <Link
-                    href="/signup"
-                    className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white px-3 sm:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg"
-                  >
-                    Sign Up
-                  </Link>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {user ? (
-          <div className="space-y-4 sm:space-y-6 px-4 sm:px-0">
-            {/* Welcome Section */}
-            <div className="bg-white/70 backdrop-blur-sm overflow-hidden shadow-xl rounded-2xl border border-blue-100">
-              <div className="px-4 py-5 sm:p-6">
-                <h2 className="text-lg sm:text-xl font-bold text-slate-800 mb-4 flex items-center">
-                  <span className="w-2 h-2 bg-green-500 rounded-full mr-3"></span>
-                  Welcome to Memory Care
-                </h2>
-                <p className="text-slate-600 mb-4 text-sm sm:text-base">
-                  The face recognition system is active. Use the camera feed
-                  below to identify registered individuals.
-                </p>
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <Link
-                    href="/person"
-                    className="text-indigo-600 hover:underline font-medium"
-                  >
-                    👥 Manage Registered Persons
-                  </Link>
-                  <Link
-                    href="/gemini-tts-test"
-                    className="text-green-600 hover:underline font-medium"
-                  >
-                    🎤 Test Gemini Text-to-Speech
-                  </Link>
+    <div className={`min-h-screen ${isFullscreen ? 'bg-black' : 'bg-gradient-to-br from-blue-50 via-white to-green-50'}`}>
+      {!isFullscreen && (
+        <nav className="bg-white/80 backdrop-blur-sm shadow-sm border-b border-blue-100">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between h-16 sm:h-20">
+              <div className="flex items-center">
+                <div className="flex items-center space-x-3">
+                  <img
+                    src="/logo.png"
+                    alt="Memory Care Logo"
+                    className="w-16 h-16 object-contain"
+                  />
+                  <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+                    Memory Care
+                  </h1>
                 </div>
               </div>
-            </div>
-
-            {/* Face Detection Section */}
-            <div className="bg-white/70 backdrop-blur-sm rounded-2xl shadow-xl p-4 sm:p-6 border border-blue-100">
-              <h3 className="text-xl sm:text-2xl font-bold text-center mb-6 bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-                🧠 Face Recognition System
-              </h3>
-
-              {error && (
-                <div className="bg-red-50 border-l-4 border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
-                  <div className="flex items-center">
-                    <span className="text-red-500 mr-2">⚠️</span>
-                    {error}
-                  </div>
-                </div>
-              )}
-
-              <div className="text-center mb-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center lg:justify-center gap-3 lg:gap-6 mb-6">
-                  <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
-                    <div
-                      className={`w-3 h-3 rounded-full ${
-                        modelsLoaded ? "bg-green-500" : "bg-red-500"
-                      } animate-pulse`}
-                    ></div>
-                    <span className="text-slate-700 text-sm font-medium">
-                      Models: {modelsLoaded ? "✅ Loaded" : "⏳ Loading..."}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
-                    <div
-                      className={`w-3 h-3 rounded-full ${
-                        facesLoaded ? "bg-green-500" : "bg-red-500"
-                      } animate-pulse`}
-                    ></div>
-                    <span className="text-slate-700 text-sm font-medium">
-                      Faces:{" "}
-                      {facesLoaded
-                        ? `✅ ${dbPersons.length} Loaded`
-                        : "⏳ Loading..."}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
-                    <div
-                      className={`w-3 h-3 rounded-full ${
-                        isWebcamStarted ? "bg-green-500" : "bg-gray-400"
-                      } ${isWebcamStarted ? "animate-pulse" : ""}`}
-                    ></div>
-                    <span className="text-slate-700 text-sm font-medium">
-                      Camera: {isWebcamStarted ? "🎥 Active" : "📷 Inactive"}
-                    </span>
-                  </div>
-                  
-                  <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
-                    <div className={`w-3 h-3 rounded-full ${isAssistantEnabled ? (isAssistantSpeaking ? 'bg-orange-500 animate-pulse' : 'bg-blue-500') : 'bg-gray-400'}`}></div>
-                    <span className="text-slate-700 text-sm font-medium">
-                      Assistant: {
-                        isAssistantSpeaking ? '🗣️ Speaking' :
-                        isAssistantEnabled ? '🤖 Active' : 
-                        '🤖 Inactive'
-                      }
-                    </span>
-                  </div>
-                </div>
-                
-                {/* AI Assistant Toggle */}
-                <div className="mb-6">
-                  <div className="flex justify-center">
-                    <button
-                      onClick={() => setIsAssistantEnabled(!isAssistantEnabled)}
-                      className={`px-6 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
-                        isAssistantEnabled
-                          ? 'bg-blue-500 text-white shadow-lg'
-                          : 'bg-white/70 text-slate-700 hover:bg-blue-100'
-                      }`}
-                    >
-                      {isAssistantEnabled ? '🔊 Voice Assistant ON' : '🔇 Voice Assistant OFF'}
-                    </button>
-                  </div>
-                  {assistantStatus && (
-                    <div className="mt-3 text-center">
-                      <span className="inline-block bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-medium">
-                        {assistantStatus}
-                      </span>
-                    </div>
-                  )}
-                </div>
-                {modelsLoaded && facesLoaded && (
+              <div className="flex items-center space-x-2 sm:space-x-4">
+                {user ? (
                   <>
-                    {!isWebcamStarted && (
-                      <button
-                        onClick={startVideoAndFullscreen}
-                        className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg"
-                      >
-                        📺 Start Full Screen
-                      </button>
-                    )}
-                    {isWebcamStarted && !isFullscreen && (
-                      <button
-                        onClick={enterFullscreen}
-                        className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg"
-                      >
-                        📺 Enter Full Screen
-                      </button>
-                    )}
+                    <span className="hidden sm:block text-slate-600 text-sm">
+                      Welcome, {user.email}
+                    </span>
+                    <button
+                      onClick={signOut}
+                      className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-3 sm:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg"
+                    >
+                      Sign Out
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <Link
+                      href="/login"
+                      className="text-slate-600 hover:text-blue-600 px-3 py-2 rounded-xl text-sm font-medium transition-colors duration-200"
+                    >
+                      Sign In
+                    </Link>
+                    <Link
+                      href="/signup"
+                      className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white px-3 sm:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg"
+                    >
+                      Sign Up
+                    </Link>
                   </>
                 )}
               </div>
+            </div>
+          </div>
+        </nav>
+      )}
+
+      <main className={`${isFullscreen ? 'h-screen' : 'max-w-7xl mx-auto py-6 sm:px-6 lg:px-8'}`}>
+        {user ? (
+          <div className={`${isFullscreen ? 'h-full' : 'space-y-4 sm:space-y-6 px-4 sm:px-0'}`}>
+            {!isFullscreen && (
+              <>
+                {/* Welcome Section */}
+                <div className="bg-white/70 backdrop-blur-sm overflow-hidden shadow-xl rounded-2xl border border-blue-100">
+                  <div className="px-4 py-5 sm:p-6">
+                    <h2 className="text-lg sm:text-xl font-bold text-slate-800 mb-4 flex items-center">
+                      <span className="w-2 h-2 bg-green-500 rounded-full mr-3"></span>
+                      Welcome to Memory Care
+                    </h2>
+                    <p className="text-slate-600 mb-4 text-sm sm:text-base">
+                      The face recognition system is active. Use the camera feed
+                      below to identify registered individuals.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Link
+                        href="/person"
+                        className="text-indigo-600 hover:underline font-medium"
+                      >
+                        👥 Manage Registered Persons
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Face Detection Section */}
+            <div className={`${isFullscreen ? 'h-full flex flex-col' : 'bg-white/70 backdrop-blur-sm rounded-2xl shadow-xl p-4 sm:p-6 border border-blue-100'}`}>
+              {!isFullscreen && (
+                <>
+                  <h3 className="text-xl sm:text-2xl font-bold text-center mb-6 bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+                    🧠 Face Recognition System
+                  </h3>
+
+                  {error && (
+                    <div className="bg-red-50 border-l-4 border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
+                      <div className="flex items-center">
+                        <span className="text-red-500 mr-2">⚠️</span>
+                        {error}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="text-center mb-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center lg:justify-center gap-3 lg:gap-6 mb-6">
+                      <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
+                        <div
+                          className={`w-3 h-3 rounded-full ${
+                            modelsLoaded ? "bg-green-500" : "bg-red-500"
+                          } animate-pulse`}
+                        ></div>
+                        <span className="text-slate-700 text-sm font-medium">
+                          Models: {modelsLoaded ? "✅ Loaded" : "⏳ Loading..."}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
+                        <div
+                          className={`w-3 h-3 rounded-full ${
+                            facesLoaded ? "bg-green-500" : "bg-red-500"
+                          } animate-pulse`}
+                        ></div>
+                        <span className="text-slate-700 text-sm font-medium">
+                          Faces:{" "}
+                          {facesLoaded
+                            ? `✅ ${dbPersons.length} Loaded`
+                            : "⏳ Loading..."}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
+                        <div
+                          className={`w-3 h-3 rounded-full ${
+                            isWebcamStarted ? "bg-green-500" : "bg-gray-400"
+                          } ${isWebcamStarted ? "animate-pulse" : ""}`}
+                        ></div>
+                        <span className="text-slate-700 text-sm font-medium">
+                          Camera: {isWebcamStarted ? "🎥 Active" : "📷 Inactive"}
+                        </span>
+                      </div>
+                      
+                      <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
+                        <div className={`w-3 h-3 rounded-full ${isAssistantEnabled ? (isAssistantSpeaking ? 'bg-orange-500 animate-pulse' : 'bg-blue-500') : 'bg-gray-400'}`}></div>
+                        <span className="text-slate-700 text-sm font-medium">
+                          Assistant: {
+                            isAssistantSpeaking ? '🗣️ Speaking' :
+                            isAssistantEnabled ? '🤖 Active' : 
+                            '🤖 Inactive'
+                          }
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {/* AI Assistant Toggle */}
+                    <div className="mb-6">
+                      <div className="flex justify-center">
+                        <button
+                          onClick={() => setIsAssistantEnabled(!isAssistantEnabled)}
+                          className={`px-6 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                            isAssistantEnabled
+                              ? 'bg-blue-500 text-white shadow-lg'
+                              : 'bg-white/70 text-slate-700 hover:bg-blue-100'
+                          }`}
+                        >
+                          {isAssistantEnabled ? '🔊 Voice Assistant ON' : '🔇 Voice Assistant OFF'}
+                        </button>
+                      </div>
+                      {assistantStatus && (
+                        <div className="mt-3 text-center">
+                          <span className="inline-block bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-medium">
+                            {assistantStatus}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    {modelsLoaded && facesLoaded && (
+                      <>
+                        {!isWebcamStarted && (
+                          <button
+                            onClick={startVideoAndFullscreen}
+                            className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg"
+                          >
+                            📺 Start Full Screen
+                          </button>
+                        )}
+                        {isWebcamStarted && !isFullscreen && (
+                          <button
+                            onClick={enterFullscreen}
+                            className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg"
+                          >
+                            📺 Enter Full Screen
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+              
               {/* Camera Container */}
-              <div className="relative flex justify-center">
+              <div className={`relative ${isFullscreen ? 'flex justify-center items-center h-full' : 'flex justify-center'}`}>
                 <div className="relative">
                   <video
                     ref={videoRef}
-                    width="720"
-                    height="560"
+                    width={isFullscreen ? "auto" : "720"}
+                    height={isFullscreen ? "auto" : "560"}
                     autoPlay
                     muted
                     onPlay={handleVideoPlay}
-                    className="rounded-lg border-2 border-gray-300"
+                    className={`${isFullscreen ? 'max-h-full max-w-full' : 'rounded-lg border-2 border-gray-300'}`}
+                    style={isFullscreen ? { height: '100vh', width: 'auto' } : {}}
                   />
                   <canvas
                     ref={canvasRef}
                     width="720"
                     height="560"
-                    className="absolute top-0 left-0 rounded-lg"
+                    className={`absolute top-0 left-0 ${isFullscreen ? '' : 'rounded-lg'}`}
+                    style={isFullscreen ? { 
+                      height: '100vh', 
+                      width: 'auto',
+                      transform: 'scale(1)',
+                      transformOrigin: 'center'
+                    } : {}}
                   />
                   
-                  {/* Exit Fullscreen Button */}
+                  {/* Fullscreen UI Overlay */}
                   {isFullscreen && (
-                    <button
-                      onClick={exitFullscreen}
-                      className="absolute top-4 right-4 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg shadow-lg transition-all duration-200 z-10"
-                      title="Exit Fullscreen"
-                    >
-                      ❌ Exit Fullscreen
-                    </button>
+                    <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
+                      {/* Voice Assistant Toggle - Top Left */}
+                      <div className="absolute top-4 left-4 pointer-events-auto">
+                        <button
+                          onClick={() => setIsAssistantEnabled(!isAssistantEnabled)}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                            isAssistantEnabled
+                              ? 'bg-blue-500/80 text-white shadow-lg backdrop-blur-sm'
+                              : 'bg-white/80 text-slate-700 hover:bg-blue-100/80 backdrop-blur-sm'
+                          }`}
+                        >
+                          {isAssistantEnabled ? '🔊 Voice Assistant ON' : '🔇 Voice Assistant OFF'}
+                        </button>
+                      </div>
+                      
+                      {/* Assistant Status - Top Center */}
+                      {assistantStatus && (
+                        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 pointer-events-auto">
+                          <span className="inline-block bg-blue-100/90 text-blue-800 px-3 py-1 rounded-full text-xs font-medium backdrop-blur-sm">
+                            {assistantStatus}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {/* Exit Fullscreen Button - Top Right */}
+                      <div className="absolute top-4 right-4 pointer-events-auto">
+                        <button
+                          onClick={exitFullscreen}
+                          className="bg-red-500/80 hover:bg-red-600/80 text-white font-bold py-2 px-4 rounded-lg shadow-lg transition-all duration-200 backdrop-blur-sm"
+                          title="Exit Fullscreen"
+                        >
+                          ❌ Exit Fullscreen
+                        </button>
+                      </div>
+                    </div>
                   )}
                   
                   {/* Overlay Play Buttons for Detected Persons */}
