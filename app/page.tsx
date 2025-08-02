@@ -675,19 +675,6 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                       {isAssistantEnabled ? '🔊 Voice Assistant ON' : '🔇 Voice Assistant OFF'}
                     </button>
                   </div>
-                  <div className="flex justify-center mt-2">
-                    <button
-                      onClick={() => generatePersonDescription({ 
-                        name: "Test Person", 
-                        relationship: "friend", 
-                        description: "A wonderful test person" 
-                      }, true)}
-                      className="px-4 py-2 rounded-lg text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors mr-2"
-                      disabled={isAssistantSpeaking}
-                    >
-                      🧪 Test Assistant
-                    </button>
-                  </div>
                   {assistantStatus && (
                     <div className="mt-3 text-center">
                       <span className="inline-block bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-medium">
