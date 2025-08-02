@@ -277,7 +277,7 @@ export default function Home() {
                   Manage Registered Persons
                 </Link>
               </div>
-            </header>
+            </div>
 
             {/* Face Detection Section */}
             <div className="bg-white/70 backdrop-blur-sm rounded-2xl shadow-xl p-4 sm:p-6 border border-blue-100">
