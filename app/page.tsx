@@ -218,10 +218,8 @@ export default function Home() {
     const canvas = canvasRef.current
     const video = videoRef.current
     
-    // Set canvas size to match video display size
-    const displaySize = { width: video.clientWidth, height: video.clientHeight }
-    canvas.width = video.clientWidth
-    canvas.height = video.clientHeight
+    // Use actual video dimensions like the working version
+    const displaySize = { width: video.width, height: video.height }
     faceapi.matchDimensions(canvas, displaySize)
 
     const detectFaces = async () => {
@@ -256,14 +254,12 @@ export default function Home() {
           const { label, distance } = bestMatch
           
           let displayText = ''
-          let textColor = '#DC2626' // Warm red for unknown
-          let backgroundColor = 'rgba(220, 38, 38, 0.1)' // Light red background
+          let textColor = '#ff0000' // Red for unknown
           
           if (label === 'Thomas' || label === 'Parth') {
             const confidence = Math.round((1 - distance) * 100)
             displayText = `${label} (${confidence}%)`
-            textColor = '#059669' // Warm green for known faces
-            backgroundColor = 'rgba(5, 150, 105, 0.1)' // Light green background
+            textColor = '#00ff00' // Green for known faces
             
             if (debugMode) {
               displayText += `\nDist: ${distance.toFixed(3)}`
@@ -277,34 +273,22 @@ export default function Home() {
           
           if (ctx) {
             const box = detection.detection.box
-            
-            // Draw background rectangle for better text visibility
-            const lines = displayText.split('\n')
-            const lineHeight = debugMode ? 16 : 22
-            const textWidth = Math.max(...lines.map(line => ctx.measureText(line).width || 0)) + 20
-            const textHeight = lines.length * lineHeight + 10
-            
-            // Background rectangle
-            ctx.fillStyle = backgroundColor
-            ctx.fillRect(box.x - 5, box.y - textHeight - 10, textWidth, textHeight)
-            
-            // Text styling
             ctx.fillStyle = textColor
-            ctx.font = `bold ${debugMode ? '14px' : '18px'} Inter, system-ui, sans-serif`
-            ctx.strokeStyle = 'white'
-            ctx.lineWidth = 2
+            ctx.font = debugMode ? '14px Arial' : '20px Arial'
+            ctx.strokeStyle = 'black'
+            ctx.lineWidth = 3
             
-            // Draw text with outline for better visibility
+            // Draw text with background for better visibility
+            const lines = displayText.split('\n')
             lines.forEach((line, lineIndex) => {
-              const y = box.y - 15 - (lines.length - 1 - lineIndex) * lineHeight
+              const y = box.y - 10 - (lines.length - 1 - lineIndex) * 18
               ctx.strokeText(line, box.x, y)
               ctx.fillText(line, box.x, y)
             })
             
             if (debugMode) {
               // Draw detection score
-              ctx.fillStyle = '#F59E0B' // Amber color
-              ctx.font = 'bold 12px Inter, system-ui, sans-serif'
+              ctx.fillStyle = '#ffff00'
               ctx.fillText(`Score: ${detection.detection.score.toFixed(3)}`, box.x, box.y + box.height + 20)
             }
           }
@@ -598,35 +582,23 @@ export default function Home() {
               )}
 
               {/* Camera Container */}
-              <div className="relative flex justify-center mb-6">
-                <div className="relative w-full max-w-4xl">
-                  <div className="relative bg-black rounded-2xl overflow-hidden shadow-2xl border-4 border-white/20">
-                    <video
-                      ref={videoRef}
-                      className="w-full h-auto max-h-[70vh] object-cover"
-                      autoPlay
-                      muted
-                      onPlay={handleVideoPlay}
-                      style={{ aspectRatio: '16/9' }}
-                    />
-                    <canvas
-                      ref={canvasRef}
-                      className="absolute top-0 left-0 w-full h-full object-cover"
-                      style={{ aspectRatio: '16/9' }}
-                    />
-                  </div>
-                  
-                  {/* Camera overlay info */}
-                  <div className="absolute top-4 left-4 right-4 flex justify-between items-start">
-                    <div className="bg-black/50 backdrop-blur-sm text-white px-3 py-2 rounded-xl text-sm">
-                      🎥 Live Camera
-                    </div>
-                    {debugMode && (
-                      <div className="bg-purple-500/80 backdrop-blur-sm text-white px-3 py-2 rounded-xl text-sm">
-                        🔬 Debug Mode
-                      </div>
-                    )}
-                  </div>
+              <div className="relative flex justify-center">
+                <div className="relative">
+                  <video
+                    ref={videoRef}
+                    width="720"
+                    height="560"
+                    autoPlay
+                    muted
+                    onPlay={handleVideoPlay}
+                    className="rounded-lg border-2 border-gray-300"
+                  />
+                  <canvas
+                    ref={canvasRef}
+                    width="720"
+                    height="560"
+                    className="absolute top-0 left-0 rounded-lg"
+                  />
                 </div>
               </div>
 
