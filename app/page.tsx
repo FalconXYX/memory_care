@@ -42,6 +42,13 @@ export default function Home() {
   // Hashmap to track last voice play time for each person
   const [personCooldowns, setPersonCooldowns] = useState<Map<string, number>>(new Map());
   
+  // Track currently detected persons with their positions for overlay buttons
+  const [detectedPersons, setDetectedPersons] = useState<Array<{
+    person: any;
+    box: { x: number; y: number; width: number; height: number };
+    textColor: string;
+  }>>([]);
+  
   // Cooldown configuration in minutes
   const PERSON_COOLDOWN_MINUTES = 5;
   const API_CALL_DEBOUNCE_MS = 2000; // 2 seconds between API calls
@@ -137,8 +144,8 @@ export default function Home() {
     setAssistantStatus(`🎤 Describing ${person.name}...`);
     
     try {
-      // Stop any currently playing audio
-      if (audioStreamerRef.current) {
+      // Only stop currently playing audio if this is a forced/manual play
+      if (forcePlay && audioStreamerRef.current) {
         audioStreamerRef.current.stop();
       }
 
@@ -215,6 +222,13 @@ export default function Home() {
       const displaySize = { width: video.width, height: video.height };
       const resizedDetections = faceapi.resizeResults(detections, displaySize);
 
+      // Collect detected persons for overlay buttons
+      const currentDetectedPersons: Array<{
+        person: any;
+        box: { x: number; y: number; width: number; height: number };
+        textColor: string;
+      }> = [];
+
       if (faceMatcher && resizedDetections.length > 0) {
         resizedDetections.forEach((detection) => {
           const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
@@ -226,6 +240,7 @@ export default function Home() {
             description: ""
           };
           let textColor = "#ff0000"; // Red for unknown
+          let fullPersonData = null;
 
           if (label !== "unknown") {
             const person = dbPersons.find((p) => p.name === label);
@@ -236,6 +251,14 @@ export default function Home() {
                 description: person.description
               };
               textColor = "#00ff00"; // Green for known
+              fullPersonData = person;
+              
+              // Add to detected persons for overlay buttons (only known persons)
+              currentDetectedPersons.push({
+                person: person,
+                box: detection.detection.box,
+                textColor: textColor
+              });
               
               // Call Gemini Live assistant to describe the person (only if conditions are met)
               // Add additional check to prevent repeated calls for the same person
@@ -246,7 +269,13 @@ export default function Home() {
                                   !detectedPersonsRef.current.has(person.name) &&
                                   (currentTime - lastDetectionTimeRef.current) > 1000; // 1 second minimum between any detections
               
+              // Debug logging for auto-trigger decisions
+              if (isAssistantEnabled && !shouldTrigger) {
+                console.log(`Auto-trigger blocked for ${person.name}: speaking=${isAssistantSpeaking}, cooldown=${isPersonInCooldown(person.name)}, detected=${detectedPersonsRef.current.has(person.name)}`);
+              }
+              
               if (shouldTrigger) {
+                console.log(`Auto-triggering voice for ${person.name}`);
                 detectedPersonsRef.current.add(person.name);
                 lastDetectionTimeRef.current = currentTime;
                 generatePersonDescription(person);
@@ -345,6 +374,9 @@ export default function Home() {
           }
         });
       }
+
+      // Update detected persons state for overlay buttons
+      setDetectedPersons(currentDetectedPersons);
     };
 
     detectionIntervalRef.current = setInterval(detectFaces, 500); // Reduced from 100ms to 500ms
@@ -760,6 +792,51 @@ export default function Home() {
                     height="560"
                     className="absolute top-0 left-0 rounded-lg"
                   />
+                  
+                  {/* Overlay Play Buttons for Detected Persons */}
+                  {detectedPersons.map((detectedPerson, index) => {
+                    const { person, box } = detectedPerson;
+                    const isInCooldown = isPersonInCooldown(person.name);
+                    const cooldownTime = personCooldowns.get(person.name);
+                    let remainingMinutes = 0;
+                    
+                    if (cooldownTime) {
+                      const timeLeft = (PERSON_COOLDOWN_MINUTES * 60 * 1000) - (Date.now() - cooldownTime);
+                      remainingMinutes = Math.ceil(timeLeft / (60 * 1000));
+                    }
+                    
+                    return (
+                      <button
+                        key={`${person.name}-${index}`}
+                        onClick={() => {
+                          generatePersonDescription(person, true);
+                          // Reset cooldown when manually triggered
+                          setPersonCooldowns(prev => new Map(prev.set(person.name, Date.now())));
+                        }}
+                        disabled={isAssistantSpeaking}
+                        className={`absolute text-xs font-bold rounded-full w-8 h-8 flex items-center justify-center transition-all duration-200 hover:scale-110 ${
+                          isAssistantSpeaking 
+                            ? 'bg-gray-400 text-gray-600 cursor-not-allowed' 
+                            : isInCooldown 
+                              ? 'bg-orange-500 text-white hover:bg-orange-600' 
+                              : 'bg-green-500 text-white hover:bg-green-600'
+                        }`}
+                        style={{
+                          left: `${box.x + box.width + 5}px`,
+                          top: `${box.y}px`,
+                        }}
+                        title={
+                          isAssistantSpeaking 
+                            ? 'Assistant is currently speaking' 
+                            : isInCooldown 
+                              ? `Play ${person.name} (${remainingMinutes}m cooldown)` 
+                              : `Play ${person.name}`
+                        }
+                      >
+                        {isAssistantSpeaking ? '⏸' : isInCooldown ? `${remainingMinutes}` : '▶'}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -780,6 +857,8 @@ export default function Home() {
                   <br />
                   <span className="font-bold">📋 Context Info:</span> Name, relationship, and description will be shown
                   <br />
+                  <span className="font-bold">▶️ Play Buttons:</span> Click the green ▶ button next to detected persons to manually trigger voice descriptions and reset their cooldown
+                  <br />
                   <span className="font-bold">🤖 AI Assistant:</span> {
                     isAssistantSpeaking ? 'Currently speaking...' :
                     isAssistantEnabled ? `Voice descriptions enabled (${PERSON_COOLDOWN_MINUTES}m cooldown)` : 
@@ -787,7 +866,7 @@ export default function Home() {
                   }
                   <br />
                   <span className="font-bold">🎯 Current Display:</span> {
-                    displayMode === 'name' ? '� Context information only' :
+                    displayMode === 'name' ? '📝 Context information only' :
                     displayMode === 'nameBox' ? '📦 Context with bounding boxes' :
                     '🎯 Context, boxes, and facial landmarks'
                   }
