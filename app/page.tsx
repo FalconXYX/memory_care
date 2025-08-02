@@ -10,24 +10,26 @@ export default function Home() {
   const { user, loading, signOut } = useAuth();
 
   // Face detection states
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [modelsLoaded, setModelsLoaded] = useState(false)
-  const [isWebcamStarted, setIsWebcamStarted] = useState(false)
-  const [error, setError] = useState<string>('')
-  const [faceMatcher, setFaceMatcher] = useState<any>(null)
-  const [dbPersons, setDbPersons] = useState<Array<{
-    id: string;
-    name: string;
-    description: string;
-    relationship: string;
-    presignedImageUrl?: string;
-  }>>([]);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [isWebcamStarted, setIsWebcamStarted] = useState(false);
+  const [error, setError] = useState<string>("");
+  const [faceMatcher, setFaceMatcher] = useState<any>(null);
+  const [dbPersons, setDbPersons] = useState<
+    Array<{
+      id: string;
+      name: string;
+      description: string;
+      relationship: string;
+      presignedImageUrl?: string;
+    }>
+  >([]);
   const [facesLoaded, setFacesLoaded] = useState(false);
-  const [debugMode, setDebugMode] = useState(false)
-  const [displayMode, setDisplayMode] = useState<'name' | 'nameBox' | 'nameLandmarks'>(
-    'name'
-  )
+  const [debugMode, setDebugMode] = useState(false);
+  const [displayMode, setDisplayMode] = useState<
+    "name" | "nameBox" | "nameLandmarks"
+  >("name");
 
   // Store the interval ref so we can clear it when needed
   const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -42,7 +44,7 @@ export default function Home() {
     const detectFaces = async () => {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      
+
       if (!video || !canvas) return;
 
       const detections = await faceapi
@@ -82,7 +84,7 @@ export default function Home() {
             const box = detection.detection.box;
 
             // Mode 1: Just name appearing
-            if (displayMode === 'name') {
+            if (displayMode === "name") {
               ctx.fillStyle = textColor;
               ctx.font = "20px Arial";
               ctx.strokeStyle = "black";
@@ -90,14 +92,14 @@ export default function Home() {
               ctx.strokeText(displayText, box.x, box.y - 10);
               ctx.fillText(displayText, box.x, box.y - 10);
             }
-            
+
             // Mode 2: Name + box appearing
-            else if (displayMode === 'nameBox') {
+            else if (displayMode === "nameBox") {
               // Draw bounding box
               ctx.strokeStyle = textColor;
               ctx.lineWidth = 2;
               ctx.strokeRect(box.x, box.y, box.width, box.height);
-              
+
               // Draw text
               ctx.fillStyle = textColor;
               ctx.font = "20px Arial";
@@ -106,14 +108,14 @@ export default function Home() {
               ctx.strokeText(displayText, box.x, box.y - 10);
               ctx.fillText(displayText, box.x, box.y - 10);
             }
-            
+
             // Mode 3: Name + box + face landmarks
-            else if (displayMode === 'nameLandmarks') {
+            else if (displayMode === "nameLandmarks") {
               // Draw bounding box
               ctx.strokeStyle = textColor;
               ctx.lineWidth = 2;
               ctx.strokeRect(box.x, box.y, box.width, box.height);
-              
+
               // Draw landmarks
               const landmarks = detection.landmarks;
               if (landmarks) {
@@ -124,7 +126,7 @@ export default function Home() {
                   ctx.fill();
                 });
               }
-              
+
               // Draw text
               ctx.fillStyle = textColor;
               ctx.font = "20px Arial";
@@ -176,7 +178,12 @@ export default function Home() {
 
   // Restart face detection when display mode changes (only if camera is already running)
   useEffect(() => {
-    if (isWebcamStarted && modelsLoaded && videoRef.current && canvasRef.current) {
+    if (
+      isWebcamStarted &&
+      modelsLoaded &&
+      videoRef.current &&
+      canvasRef.current
+    ) {
       startFaceDetection();
     }
   }, [displayMode, isWebcamStarted, modelsLoaded]);
@@ -301,9 +308,11 @@ export default function Home() {
           <div className="flex justify-between h-16 sm:h-20">
             <div className="flex items-center">
               <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-green-500 rounded-xl flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">MC</span>
-                </div>
+                <img
+                  src="/logo.png"
+                  alt="Memory Care Logo"
+                  className="w-16 h-16 object-contain"
+                />
                 <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
                   Memory Care
                 </h1>
@@ -312,7 +321,9 @@ export default function Home() {
             <div className="flex items-center space-x-2 sm:space-x-4">
               {user ? (
                 <>
-                  <span className="hidden sm:block text-slate-600 text-sm">Welcome, {user.email}</span>
+                  <span className="hidden sm:block text-slate-600 text-sm">
+                    Welcome, {user.email}
+                  </span>
                   <button
                     onClick={signOut}
                     className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-3 sm:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg"
@@ -352,13 +363,20 @@ export default function Home() {
                   Welcome to Memory Care
                 </h2>
                 <p className="text-slate-600 mb-4 text-sm sm:text-base">
-                  The face recognition system is active. Use the camera feed below to identify registered individuals.
+                  The face recognition system is active. Use the camera feed
+                  below to identify registered individuals.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <Link href="/person" className="text-indigo-600 hover:underline font-medium">
+                  <Link
+                    href="/person"
+                    className="text-indigo-600 hover:underline font-medium"
+                  >
                     👥 Manage Registered Persons
                   </Link>
-                  <Link href="/gemini-tts-test" className="text-green-600 hover:underline font-medium">
+                  <Link
+                    href="/gemini-tts-test"
+                    className="text-green-600 hover:underline font-medium"
+                  >
                     🎤 Test Gemini Text-to-Speech
                   </Link>
                 </div>
@@ -383,64 +401,81 @@ export default function Home() {
               <div className="text-center mb-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center lg:justify-center gap-3 lg:gap-6 mb-6">
                   <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
-                    <div className={`w-3 h-3 rounded-full ${modelsLoaded ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
+                    <div
+                      className={`w-3 h-3 rounded-full ${
+                        modelsLoaded ? "bg-green-500" : "bg-red-500"
+                      } animate-pulse`}
+                    ></div>
                     <span className="text-slate-700 text-sm font-medium">
-                      Models: {modelsLoaded ? '✅ Loaded' : '⏳ Loading...'}
+                      Models: {modelsLoaded ? "✅ Loaded" : "⏳ Loading..."}
                     </span>
                   </div>
-                  
+
                   <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
-                    <div className={`w-3 h-3 rounded-full ${facesLoaded ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
+                    <div
+                      className={`w-3 h-3 rounded-full ${
+                        facesLoaded ? "bg-green-500" : "bg-red-500"
+                      } animate-pulse`}
+                    ></div>
                     <span className="text-slate-700 text-sm font-medium">
-                      Faces: {facesLoaded ? `✅ ${dbPersons.length} Loaded` : '⏳ Loading...'}
+                      Faces:{" "}
+                      {facesLoaded
+                        ? `✅ ${dbPersons.length} Loaded`
+                        : "⏳ Loading..."}
                     </span>
                   </div>
-                  
+
                   <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
-                    <div className={`w-3 h-3 rounded-full ${isWebcamStarted ? 'bg-green-500' : 'bg-gray-400'} ${isWebcamStarted ? 'animate-pulse' : ''}`}></div>
+                    <div
+                      className={`w-3 h-3 rounded-full ${
+                        isWebcamStarted ? "bg-green-500" : "bg-gray-400"
+                      } ${isWebcamStarted ? "animate-pulse" : ""}`}
+                    ></div>
                     <span className="text-slate-700 text-sm font-medium">
-                      Camera: {isWebcamStarted ? '🎥 Active' : '📷 Inactive'}
+                      Camera: {isWebcamStarted ? "🎥 Active" : "📷 Inactive"}
                     </span>
                   </div>
                 </div>
-                
+
                 {/* Display Mode Toggle */}
                 <div className="mb-6">
-                  <h4 className="text-sm font-semibold text-slate-700 mb-3 text-center">🎯 Display Mode</h4>
+                  <h4 className="text-sm font-semibold text-slate-700 mb-3 text-center">
+                    🎯 Display Mode
+                  </h4>
                   <div className="flex flex-col sm:flex-row justify-center gap-2 sm:gap-3">
                     <button
-                      onClick={() => setDisplayMode('name')}
+                      onClick={() => setDisplayMode("name")}
                       className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                        displayMode === 'name'
-                          ? 'bg-blue-500 text-white shadow-lg'
-                          : 'bg-white/70 text-slate-700 hover:bg-blue-100'
+                        displayMode === "name"
+                          ? "bg-blue-500 text-white shadow-lg"
+                          : "bg-white/70 text-slate-700 hover:bg-blue-100"
                       }`}
                     >
                       📝 Name Only
                     </button>
                     <button
-                      onClick={() => setDisplayMode('nameBox')}
+                      onClick={() => setDisplayMode("nameBox")}
                       className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                        displayMode === 'nameBox'
-                          ? 'bg-blue-500 text-white shadow-lg'
-                          : 'bg-white/70 text-slate-700 hover:bg-blue-100'
+                        displayMode === "nameBox"
+                          ? "bg-blue-500 text-white shadow-lg"
+                          : "bg-white/70 text-slate-700 hover:bg-blue-100"
                       }`}
                     >
                       📦 Name + Box
                     </button>
                     <button
-                      onClick={() => setDisplayMode('nameLandmarks')}
+                      onClick={() => setDisplayMode("nameLandmarks")}
                       className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                        displayMode === 'nameLandmarks'
-                          ? 'bg-blue-500 text-white shadow-lg'
-                          : 'bg-white/70 text-slate-700 hover:bg-blue-100'
+                        displayMode === "nameLandmarks"
+                          ? "bg-blue-500 text-white shadow-lg"
+                          : "bg-white/70 text-slate-700 hover:bg-blue-100"
                       }`}
                     >
                       🎯 Name + Box + Landmarks
                     </button>
                   </div>
                 </div>
-                
+
                 {!isWebcamStarted && modelsLoaded && facesLoaded && (
                   <button
                     onClick={startVideo}
@@ -473,15 +508,23 @@ export default function Home() {
 
               <div className="text-center bg-white/50 rounded-2xl p-4 border border-blue-100 mt-6">
                 <p className="text-sm sm:text-base text-slate-700">
-                  <span className="font-bold">🔍 Recognition Mode:</span> The system will identify registered individuals.
+                  <span className="font-bold">🔍 Recognition Mode:</span> The
+                  system will identify registered individuals.
                   <br />
-                  <span className="text-green-600 font-semibold">Green = Known person</span>, <span className="text-red-500 font-semibold">Red = Unknown person</span>
+                  <span className="text-green-600 font-semibold">
+                    Green = Known person
+                  </span>
+                  ,{" "}
+                  <span className="text-red-500 font-semibold">
+                    Red = Unknown person
+                  </span>
                   <br />
-                  <span className="font-bold">🎯 Current Display:</span> {
-                    displayMode === 'name' ? '📝 Names only' :
-                    displayMode === 'nameBox' ? '📦 Names with bounding boxes' :
-                    '🎯 Names, boxes, and facial landmarks'
-                  }
+                  <span className="font-bold">🎯 Current Display:</span>{" "}
+                  {displayMode === "name"
+                    ? "📝 Names only"
+                    : displayMode === "nameBox"
+                    ? "📦 Names with bounding boxes"
+                    : "🎯 Names, boxes, and facial landmarks"}
                 </p>
               </div>
             </div>
