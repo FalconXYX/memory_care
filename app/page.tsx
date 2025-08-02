@@ -29,9 +29,6 @@ export default function Home() {
   >([]);
   const [facesLoaded, setFacesLoaded] = useState(false);
   const [debugMode, setDebugMode] = useState(false)
-  const [displayMode, setDisplayMode] = useState<'name' | 'nameBox' | 'nameLandmarks'>(
-    'name'
-  )
   const [isAssistantEnabled, setIsAssistantEnabled] = useState(false);
   const [assistantStatus, setAssistantStatus] = useState<string>('');
   const [isAssistantSpeaking, setIsAssistantSpeaking] = useState(false);
@@ -331,63 +328,19 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
               });
             };
 
-            // Mode 1: Just context info appearing
-            if (displayMode === 'name') {
-              const lines = [
-                `👤 ${personInfo.name}`,
-                ...(personInfo.relationship ? [`💝 ${personInfo.relationship}`] : []),
-                ...(personInfo.description ? [`📝 ${personInfo.description}`] : [])
-              ];
-              
-              drawContextInfo(box.x, box.y - 10, lines);
-            }
+            // Draw bounding box
+            ctx.strokeStyle = textColor;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(box.x, box.y, box.width, box.height);
+
+            // Draw context info
+            const lines = [
+              `👤 ${personInfo.name}`,
+              ...(personInfo.relationship ? [`💝 ${personInfo.relationship}`] : []),
+              ...(personInfo.description ? [`📝 ${personInfo.description}`] : [])
+            ];
             
-            // Mode 2: Context info + box appearing
-            else if (displayMode === 'nameBox') {
-              // Draw bounding box
-              ctx.strokeStyle = textColor;
-              ctx.lineWidth = 2;
-              ctx.strokeRect(box.x, box.y, box.width, box.height);
-
-              // Draw context info
-              const lines = [
-                `👤 ${personInfo.name}`,
-                ...(personInfo.relationship ? [`💝 ${personInfo.relationship}`] : []),
-                ...(personInfo.description ? [`📝 ${personInfo.description}`] : [])
-              ];
-              
-              drawContextInfo(box.x, box.y - 10, lines);
-            }
-            
-            // Mode 3: Context info + box + face landmarks
-            else if (displayMode === 'nameLandmarks') {
-
-              // Draw bounding box
-              ctx.strokeStyle = textColor;
-              ctx.lineWidth = 2;
-              ctx.strokeRect(box.x, box.y, box.width, box.height);
-
-              // Draw landmarks
-              const landmarks = detection.landmarks;
-              if (landmarks) {
-                ctx.fillStyle = textColor;
-                landmarks.positions.forEach((point) => {
-                  ctx.beginPath();
-                  ctx.arc(point.x, point.y, 1, 0, 2 * Math.PI);
-                  ctx.fill();
-                });
-              }
-              
-              // Draw context info
-              const lines = [
-                `👤 ${personInfo.name}`,
-                ...(personInfo.relationship ? [`💝 ${personInfo.relationship}`] : []),
-                ...(personInfo.description ? [`📝 ${personInfo.description}`] : [])
-              ];
-              
-              drawContextInfo(box.x, box.y - 10, lines);
-
-            }
+            drawContextInfo(box.x, box.y - 10, lines);
           }
         });
       }
@@ -432,7 +385,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
     loadAssets();
   }, [user]);
 
-  // Restart face detection when display mode changes (only if camera is already running)
+  // Restart face detection when camera starts (only if models are loaded)
   useEffect(() => {
     if (
       isWebcamStarted &&
@@ -442,7 +395,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
     ) {
       startFaceDetection();
     }
-  }, [displayMode, isWebcamStarted, modelsLoaded]);
+  }, [isWebcamStarted, modelsLoaded]);
 
   // Cleanup interval and audio on component unmount
   useEffect(() => {
@@ -706,45 +659,6 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                     </span>
                   </div>
                 </div>
-
-                {/* Display Mode Toggle */}
-                <div className="mb-6">
-                  <h4 className="text-sm font-semibold text-slate-700 mb-3 text-center">
-                    🎯 Display Mode
-                  </h4>
-                  <div className="flex flex-col sm:flex-row justify-center gap-2 sm:gap-3">
-                    <button
-                      onClick={() => setDisplayMode("name")}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                        displayMode === "name"
-                          ? "bg-blue-500 text-white shadow-lg"
-                          : "bg-white/70 text-slate-700 hover:bg-blue-100"
-                      }`}
-                    >
-                      � Info Only
-                    </button>
-                    <button
-                      onClick={() => setDisplayMode("nameBox")}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                        displayMode === "nameBox"
-                          ? "bg-blue-500 text-white shadow-lg"
-                          : "bg-white/70 text-slate-700 hover:bg-blue-100"
-                      }`}
-                    >
-                      📦 Info + Box
-                    </button>
-                    <button
-                      onClick={() => setDisplayMode("nameLandmarks")}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                        displayMode === "nameLandmarks"
-                          ? "bg-blue-500 text-white shadow-lg"
-                          : "bg-white/70 text-slate-700 hover:bg-blue-100"
-                      }`}
-                    >
-                      🎯 Info + Box + Landmarks
-                    </button>
-                  </div>
-                </div>
                 
                 {/* AI Assistant Toggle */}
                 <div className="mb-6">
@@ -882,11 +796,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                     'Voice descriptions disabled'
                   }
                   <br />
-                  <span className="font-bold">🎯 Current Display:</span> {
-                    displayMode === 'name' ? '📝 Context information only' :
-                    displayMode === 'nameBox' ? '📦 Context with bounding boxes' :
-                    '🎯 Context, boxes, and facial landmarks'
-                  }
+                  <span className="font-bold">🎯 Display Mode:</span> Context information with bounding boxes
 
                 </p>
               </div>
