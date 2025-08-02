@@ -273,9 +273,14 @@ export default function Home() {
                 <p className="text-slate-600 mb-4 text-sm sm:text-base">
                   The face recognition system is active. Use the camera feed below to identify registered individuals.
                 </p>
-                <Link href="/person" className="text-indigo-600 hover:underline">
-                  Manage Registered Persons
-                </Link>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Link href="/person" className="text-indigo-600 hover:underline font-medium">
+                    👥 Manage Registered Persons
+                  </Link>
+                  <Link href="/gemini-tts-test" className="text-green-600 hover:underline font-medium">
+                    🎤 Test Gemini Text-to-Speech
+                  </Link>
+                </div>
               </div>
             </div>
 
