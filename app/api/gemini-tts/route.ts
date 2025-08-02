@@ -1,147 +1,93 @@
-import { GoogleGenAI, LiveConnectConfig, LiveCallbacks, Modality } from '@google/genai';
-import { NextRequest, NextResponse } from 'next/server';
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { NextRequest, NextResponse } from "next/server";
+import { Readable } from "stream";
+
+export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
     const { text } = await request.json();
 
     if (!text) {
-      return NextResponse.json(
-        { error: 'Text is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Text is required" }, { status: 400 });
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { error: 'Gemini API key not configured. Please add GEMINI_API_KEY to your .env.local file' },
+        {
+          error:
+            "Gemini API key not configured. Please add GEMINI_API_KEY to your .env.local file",
+        },
         { status: 500 }
       );
     }
 
-    // Initialize Gemini Live API client
-    const client = new GoogleGenAI({ apiKey });
-    
-    // Configuration for Gemini 2.0 Flash Live with audio output
-    const config: LiveConnectConfig = {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({
+      model: "gemini-1.5-flash",
+    });
+
+    const result = await model.generateContentStream({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: `Using a standard, friendly, and clear voice, please say the following sentence: "${text}"`,
+            },
+          ],
+        },
+      ],
       generationConfig: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: {
-              voiceName: 'Charon'
-            }
+        responseMimeType: "audio/webm",
+      },
+    });
+
+    const readable = new Readable({
+      read() {},
+    });
+
+    // Stream the audio
+    (async () => {
+      try {
+        for await (const chunk of result.stream) {
+          const audioChunkData =
+            chunk.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+          if (audioChunkData) {
+            readable.push(Buffer.from(audioChunkData, "base64"));
           }
         }
+        readable.push(null); // End the stream
+      } catch (error) {
+        console.error("Error during stream processing:", error);
+        readable.destroy(
+          error instanceof Error ? error : new Error("Streaming error")
+        );
       }
-    };
+    })();
 
-    // Collect audio chunks
-    const audioChunks: ArrayBuffer[] = [];
-    let isReceivingAudio = false;
-    let sessionComplete = false;
-
-    // Set up event callbacks
-    const callbacks: LiveCallbacks = {
-      onopen: () => {
-        console.log('Live API connection opened');
-      },
-      onmessage: (message) => {
-        // Handle incoming messages and look for audio data
-        if (message.serverContent?.modelTurn) {
-          const parts = message.serverContent.modelTurn.parts || [];
-          
-          // Look for audio parts
-          const audioParts = parts.filter(
-            (p) => p.inlineData && p.inlineData.mimeType?.startsWith("audio/pcm")
-          );
-          
-          // Process audio data
-          audioParts.forEach((part) => {
-            if (part.inlineData?.data) {
-              // Convert base64 to ArrayBuffer
-              const audioData = Uint8Array.from(atob(part.inlineData.data), c => c.charCodeAt(0));
-              audioChunks.push(audioData.buffer);
-              isReceivingAudio = true;
-            }
-          });
-        }
-        
-        if (message.serverContent?.turnComplete) {
-          sessionComplete = true;
-        }
-      },
-      onerror: (error) => {
-        console.error('Live API error:', error);
-      },
-      onclose: (event) => {
-        console.log('Live API connection closed');
-        sessionComplete = true;
-      }
-    };
-
-    // Connect to Gemini Live API
-    const session = await client.live.connect({
-      model: 'models/gemini-2.0-flash-live-001',
-      config,
-      callbacks
-    });
-
-    // Send the text message
-    session.sendClientContent({
-      turns: [{ text }],
-      turnComplete: true
-    });
-
-    // Wait for audio response with timeout
-    const timeout = 15000; // 15 seconds
-    const startTime = Date.now();
-
-    while (!sessionComplete && (Date.now() - startTime) < timeout) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
-    // Close the session
-    session.close();
-
-    if (!isReceivingAudio || audioChunks.length === 0) {
-      return NextResponse.json(
-        { error: 'No audio received from Gemini Live API' },
-        { status: 500 }
-      );
-    }
-
-    // Combine all audio chunks into a single buffer
-    const totalLength = audioChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-    const combinedAudio = new ArrayBuffer(totalLength);
-    const combinedView = new Uint8Array(combinedAudio);
-    
-    let offset = 0;
-    for (const chunk of audioChunks) {
-      combinedView.set(new Uint8Array(chunk), offset);
-      offset += chunk.byteLength;
-    }
-
-    // Return the audio as a WAV-like response
-    return new NextResponse(combinedAudio, {
+    return new NextResponse(readable as any, {
       status: 200,
       headers: {
-        'Content-Type': 'audio/pcm',
-        'Content-Length': combinedAudio.byteLength.toString(),
-        'Cache-Control': 'no-cache',
+        "Content-Type": "audio/webm",
+        "Cache-Control": "no-cache",
       },
     });
-
   } catch (error) {
-    console.error('Gemini Live TTS error:', error);
-    
+    console.error("Gemini TTS error:", error);
+
     return NextResponse.json(
-      { 
-        error: error instanceof Error ? error.message : 'Failed to generate speech with Gemini Live',
-        details: 'Please ensure you have access to Gemini 2.0 Flash Live model'
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to generate speech with Gemini",
+        details:
+          "Please ensure you have access to the Gemini 1.5 Flash model.",
       },
       { status: 500 }
     );
   }
 }
+
