@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
       responseModalities: [Modality.AUDIO],
       speechConfig: {
         voiceConfig: {
-          prebuiltVoiceConfig: { voiceName: 'Charon' }
+          prebuiltVoiceConfig: { voiceName: 'Aoede' }
         }
       },
       generationConfig: {
