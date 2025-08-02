@@ -136,7 +136,7 @@ export default function PersonListPage() {
                     className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white rounded-xl shadow-md hover:shadow-lg transition-all duration-200 text-sm font-medium"
                   >
                     <ArrowLeft className="w-4 h-4 mr-2" />
-                    Back to Home
+                    Home
                   </Link>
                   <div>
                     <h2 className="text-xl sm:text-2xl font-bold text-slate-800 flex items-center">

@@ -2,6 +2,8 @@
 
 import { useState, FormEvent, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { ArrowLeft, User, Upload, Save, X } from "lucide-react";
+import Link from "next/link";
 
 interface Person {
   id: string;
@@ -104,7 +106,7 @@ export default function PersonFormPage() {
         throw new Error(errorData.error || `Failed to ${isEditMode ? 'update' : 'create'} person`);
       }
 
-      // Redirect to home page after successful submission
+      // Redirect to person list page after successful submission
       router.push("/person");
     } catch (err: any) {
       setError(err.message);
@@ -116,124 +118,194 @@ export default function PersonFormPage() {
   // Show loading state when fetching person data in edit mode
   if (isEditMode && isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center">
-        <p>Loading person data...</p>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-green-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-200 border-t-blue-500 mx-auto"></div>
+          <p className="mt-4 text-slate-600 text-lg">Loading person data...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center">
-      <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-md">
-        <h1 className="text-2xl font-bold text-center mb-6">
-          {isEditMode ? "Edit Person" : "Add a New Person"}
-        </h1>
-        
-        {error && <p className="text-red-500 text-center mb-4">{error}</p>}
-        
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label
-              htmlFor="name"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Name
-            </label>
-            <input
-              id="name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-              required
-            />
-          </div>
-          
-          <div>
-            <label
-              htmlFor="description"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Description
-            </label>
-            <textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-              rows={3}
-              required
-            />
-          </div>
-          
-          <div>
-            <label
-              htmlFor="relationship"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Relationship
-            </label>
-            <input
-              id="relationship"
-              type="text"
-              value={relationship}
-              onChange={(e) => setRelationship(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-              required
-            />
-          </div>
-          
-          <div>
-            <label
-              htmlFor="image"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Image {isEditMode ? "(Optional - leave empty to keep current image)" : ""}
-            </label>
-            
-            {/* Show current image if in edit mode */}
-            {isEditMode && currentImageUrl && (
-              <div className="mt-2 mb-2">
-                <p className="text-sm text-gray-600 mb-2">Current image:</p>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
+      {/* Navigation */}
+      <nav className="bg-white/80 backdrop-blur-sm shadow-sm border-b border-blue-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between h-16 sm:h-20">
+            <div className="flex items-center">
+              <div className="flex items-center space-x-3">
                 <img
-                  src={currentImageUrl}
-                  alt="Current person image"
-                  className="w-24 h-24 object-cover rounded-md border"
+                  src="/logo.png"
+                  alt="Memory Care Logo"
+                  className="w-16 h-16 object-contain"
                 />
+                <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+                  Memory Care
+                </h1>
+              </div>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <main className="max-w-2xl mx-auto py-6 sm:px-6 lg:px-8">
+        <div className="px-4 sm:px-0">
+          {/* Header Section */}
+          <div className="bg-white/70 backdrop-blur-sm overflow-hidden shadow-xl rounded-2xl border border-blue-100 mb-6">
+            <div className="px-4 py-5 sm:p-6">
+              <div className="flex items-center space-x-4 mb-4">
+                <Link
+                  href="/person"
+                  className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white rounded-xl shadow-md hover:shadow-lg transition-all duration-200 text-sm font-medium"
+                >
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Back to Persons
+                </Link>
+              </div>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-800 flex items-center">
+                <User className="w-6 h-5.5 mr-2 text-slate-400" />
+                <p className="mt-1">{isEditMode ? "Edit Person" : "Add New Person"}</p>
+              </h2>
+              <p className="text-slate-600 text-sm mt-1">
+                {isEditMode 
+                  ? "Update the person's information below" 
+                  : "Fill in the details to register a new person for face recognition"
+                }
+              </p>
+            </div>
+          </div>
+
+          {/* Form Section */}
+          <div className="bg-white/70 backdrop-blur-sm rounded-2xl shadow-xl p-6 border border-blue-100">
+            {error && (
+              <div className="bg-red-50 border-l-4 border-red-400 text-red-700 px-4 py-3 rounded-lg mb-6 text-sm">
+                <div className="flex items-center">
+                  <span className="text-red-500 mr-2">⚠️</span>
+                  {error}
+                </div>
               </div>
             )}
             
-            <input
-              id="image"
-              type="file"
-              accept="image/*"
-              onChange={handleImageChange}
-              className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100"
-              required={!isEditMode} // Only required for new persons
-            />
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <label
+                  htmlFor="name"
+                  className="block text-sm font-semibold text-slate-700 mb-2"
+                >
+                  Full Name *
+                </label>
+                <input
+                  id="name"
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full px-4 py-3 border border-blue-200 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/80 backdrop-blur-sm transition-all duration-200"
+                  placeholder="Enter the person's full name"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label
+                  htmlFor="relationship"
+                  className="block text-sm font-semibold text-slate-700 mb-2"
+                >
+                  Relationship *
+                </label>
+                <input
+                  id="relationship"
+                  type="text"
+                  value={relationship}
+                  onChange={(e) => setRelationship(e.target.value)}
+                  className="w-full px-4 py-3 border border-blue-200 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/80 backdrop-blur-sm transition-all duration-200"
+                  placeholder="e.g., Father, Mother, Friend, Caregiver"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label
+                  htmlFor="description"
+                  className="block text-sm font-semibold text-slate-700 mb-2"
+                >
+                  Description *
+                </label>
+                <textarea
+                  id="description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full px-4 py-3 border border-blue-200 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white/80 backdrop-blur-sm transition-all duration-200 resize-none"
+                  rows={4}
+                  placeholder="Describe this person, their role, or any important details to remember"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label
+                  htmlFor="image"
+                  className="block text-sm font-semibold text-slate-700 mb-2"
+                >
+                  Photo {isEditMode ? "(Optional)" : "*"}
+                </label>
+                
+                {/* Show current image if in edit mode */}
+                {isEditMode && currentImageUrl && (
+                  <div className="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-200">
+                    <p className="text-sm text-slate-600 mb-3 font-medium">Current photo:</p>
+                    <img
+                      src={currentImageUrl}
+                      alt="Current person image"
+                      className="w-24 h-24 object-cover rounded-xl border-2 border-white shadow-md"
+                    />
+                    <p className="text-xs text-slate-500 mt-2">
+                      Upload a new photo to replace the current one
+                    </p>
+                  </div>
+                )}
+                
+                <div className="relative">
+                  <input
+                    id="image"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="w-full px-4 py-3 border border-blue-200 rounded-xl shadow-sm bg-white/80 backdrop-blur-sm transition-all duration-200 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-gradient-to-r file:from-blue-500 file:to-green-500 file:text-white hover:file:from-blue-600 hover:file:to-green-600 file:cursor-pointer"
+                    required={!isEditMode}
+                  />
+                  <Upload className="absolute right-3 top-6.5 mt-1 transform -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+                </div>
+                <p className="text-xs text-slate-500 mt-2">
+                  Choose a clear photo showing the person's face for best recognition results
+                </p>
+              </div>
+              
+              <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => router.push("/person")}
+                  className="flex-1 inline-flex items-center justify-center px-6 py-3 border border-slate-300 rounded-xl shadow-sm text-sm font-medium text-slate-700 bg-white/80 backdrop-blur-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="flex-1 inline-flex items-center justify-center px-6 py-3 border border-transparent rounded-xl shadow-md text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all duration-200 hover:shadow-lg"
+                >
+                  <Save className="w-4 h-4 mr-2" />
+                  {isSubmitting 
+                    ? (isEditMode ? "Updating..." : "Adding...") 
+                    : (isEditMode ? "Update Person" : "Add Person")
+                  }
+                </button>
+              </div>
+            </form>
           </div>
-          
-          <div className="flex gap-4">
-            <button
-              type="button"
-              onClick={() => router.push("/")}
-              className="flex-1 py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="flex-1 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400"
-            >
-              {isSubmitting 
-                ? (isEditMode ? "Updating..." : "Adding...") 
-                : (isEditMode ? "Update Person" : "Add Person")
-              }
-            </button>
-          </div>
-        </form>
-      </div>
+        </div>
+      </main>
     </div>
   );
 }
