@@ -190,6 +190,7 @@ export default function Home() {
       const contentType = response.headers.get('Content-Type');
       
       if (contentType?.includes('audio/pcm')) {
+        // Handle audio response (Live API)
         const pcmArrayBuffer = await response.arrayBuffer();
         setAssistantStatus(`🎵 Playing description for ${person.name}`);
         
@@ -201,6 +202,40 @@ export default function Home() {
           audioStreamerRef.current.addPCM16(pcmData);
         } else {
           throw new Error('Audio system not initialized');
+        }
+      } else {
+        // Handle fallback text response (Standard API)
+        const data = await response.json();
+        
+        if (data.fallback && data.optimizedText) {
+          // Use Web Speech API for fallback TTS
+          setAssistantStatus(`🗣️ Speaking description for ${person.name} (fallback)`);
+          
+          if ('speechSynthesis' in window) {
+            const utterance = new SpeechSynthesisUtterance(data.optimizedText);
+            utterance.rate = data.ttsConfig?.rate || 0.9;
+            utterance.pitch = data.ttsConfig?.pitch || 1.0;
+            utterance.volume = data.ttsConfig?.volume || 1.0;
+            
+            utterance.onend = () => {
+              setIsAssistantSpeaking(false);
+              setAssistantStatus('');
+              setLastSpeechTime(Date.now());
+            };
+            
+            utterance.onerror = (event) => {
+              console.error('Speech synthesis error:', event);
+              setIsAssistantSpeaking(false);
+              setAssistantStatus('❌ Speech synthesis failed');
+              setTimeout(() => setAssistantStatus(''), 3000);
+            };
+            
+            speechSynthesis.speak(utterance);
+          } else {
+            throw new Error('Speech synthesis not supported in this browser');
+          }
+        } else {
+          throw new Error('Unexpected response format');
         }
       }
 
