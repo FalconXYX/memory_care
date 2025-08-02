@@ -32,9 +32,7 @@ export default function LoginPage() {
         {/* Unified header, spaced and clean */}
         <div className="flex items-center justify-between gap-4 mb-10 px-4 sm:px-8 pt-8 sm:pt-14">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-green-500 rounded-xl flex items-center justify-center">
-              <span className="text-white font-bold text-xl">MC</span>
-            </div>
+            <img src="/logo.png" alt="Memory Care Logo" className="w-16 h-16 object-contain" />
             <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent drop-shadow-lg">
               Memory Care
             </h1>
