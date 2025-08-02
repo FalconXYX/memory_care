@@ -12,21 +12,19 @@ export default function Home() {
   const { user, loading, signOut } = useAuth();
 
   // Face detection states
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [modelsLoaded, setModelsLoaded] = useState(false);
-  const [isWebcamStarted, setIsWebcamStarted] = useState(false);
-  const [error, setError] = useState<string>("");
-  const [faceMatcher, setFaceMatcher] = useState<any>(null);
-  const [dbPersons, setDbPersons] = useState<
-    Array<{
-      id: string;
-      name: string;
-      description: string;
-      relationship: string;
-      presignedImageUrl?: string;
-    }>
-  >([]);
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [modelsLoaded, setModelsLoaded] = useState(false)
+  const [isWebcamStarted, setIsWebcamStarted] = useState(false)
+  const [error, setError] = useState<string>('')
+  const [faceMatcher, setFaceMatcher] = useState<any>(null)
+  const [dbPersons, setDbPersons] = useState<Array<{
+    id: string;
+    name: string;
+    description: string;
+    relationship: string;
+    presignedImageUrl?: string;
+  }>>([]);
   const [facesLoaded, setFacesLoaded] = useState(false);
   const [debugMode, setDebugMode] = useState(false)
   const [displayMode, setDisplayMode] = useState<'name' | 'nameBox' | 'nameLandmarks'>(
@@ -35,19 +33,10 @@ export default function Home() {
   const [isAssistantEnabled, setIsAssistantEnabled] = useState(false);
   const [assistantStatus, setAssistantStatus] = useState<string>('');
   const [isAssistantSpeaking, setIsAssistantSpeaking] = useState(false);
+  const [lastDescribedPerson, setLastDescribedPerson] = useState<{name: string, time: number} | null>(null);
   const [lastApiCall, setLastApiCall] = useState<number>(0);
   // Track last time any speech finished for global cooldown
   const [lastSpeechTime, setLastSpeechTime] = useState<number>(0);
-  
-  // Hashmap to track last voice play time for each person
-  const [personCooldowns, setPersonCooldowns] = useState<Map<string, number>>(new Map());
-  
-  // Track currently detected persons with their positions for overlay buttons
-  const [detectedPersons, setDetectedPersons] = useState<Array<{
-    person: any;
-    box: { x: number; y: number; width: number; height: number };
-    textColor: string;
-  }>>([]);
   
   // Cooldown configuration in minutes
   const PERSON_COOLDOWN_MINUTES = 5;
@@ -66,20 +55,13 @@ export default function Home() {
   const detectedPersonsRef = useRef<Set<string>>(new Set());
   const lastDetectionTimeRef = useRef<number>(0);
 
-  // Simple cooldown check using hashmap
+  // Simple cooldown check
   const isPersonInCooldown = (personName: string): boolean => {
-    const lastPlayTime = personCooldowns.get(personName);
-    if (!lastPlayTime) return false;
+    if (!lastDescribedPerson) return false;
+    if (lastDescribedPerson.name !== personName) return false;
     
     const cooldownMs = PERSON_COOLDOWN_MINUTES * 60 * 1000;
-    const isInCooldown = (Date.now() - lastPlayTime) < cooldownMs;
-    
-    if (isInCooldown) {
-      const timeLeft = cooldownMs - (Date.now() - lastPlayTime);
-      console.log(`${personName} is in cooldown for ${Math.ceil(timeLeft / (60 * 1000))} more minutes`);
-    }
-    
-    return isInCooldown;
+    return (Date.now() - lastDescribedPerson.time) < cooldownMs;
   };
 
   // Initialize audio context and streamer
@@ -127,8 +109,7 @@ export default function Home() {
     
     // Check cooldown for same person (unless force play)
     if (!forcePlay && isPersonInCooldown(person.name)) {
-      const lastPlayTime = personCooldowns.get(person.name);
-      const timeLeft = PERSON_COOLDOWN_MINUTES * 60 * 1000 - (Date.now() - lastPlayTime!);
+      const timeLeft = PERSON_COOLDOWN_MINUTES * 60 * 1000 - (Date.now() - lastDescribedPerson!.time);
       const minutesLeft = Math.ceil(timeLeft / (60 * 1000));
       console.log(`${person.name} is in cooldown for ${minutesLeft} more minutes`);
       setAssistantStatus(`⏳ ${person.name} on cooldown (${minutesLeft}m left)`);
@@ -138,14 +119,14 @@ export default function Home() {
 
     console.log(`Starting description for ${person.name}`);
     // Track this person to prevent repeat calls
-    setPersonCooldowns(prev => new Map(prev.set(person.name, Date.now())));
+    setLastDescribedPerson({ name: person.name, time: Date.now() });
     setLastApiCall(Date.now());
     setIsAssistantSpeaking(true);
     setAssistantStatus(`🎤 Describing ${person.name}...`);
     
     try {
-      // Only stop currently playing audio if this is a forced/manual play
-      if (forcePlay && audioStreamerRef.current) {
+      // Stop any currently playing audio
+      if (audioStreamerRef.current) {
         audioStreamerRef.current.stop();
       }
 
@@ -177,6 +158,9 @@ export default function Home() {
           // Convert ArrayBuffer to Uint8Array and stream it
           const pcmData = new Uint8Array(pcmArrayBuffer);
           audioStreamerRef.current.addPCM16(pcmData);
+          
+          // Set cooldown
+          setLastDescribedPerson({ name: person.name, time: Date.now() });
         } else {
           throw new Error('Audio system not initialized');
         }
@@ -200,7 +184,7 @@ export default function Home() {
     const detectFaces = async () => {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-
+      
       if (!video || !canvas) return;
 
       const detections = await faceapi
@@ -222,13 +206,6 @@ export default function Home() {
       const displaySize = { width: video.width, height: video.height };
       const resizedDetections = faceapi.resizeResults(detections, displaySize);
 
-      // Collect detected persons for overlay buttons
-      const currentDetectedPersons: Array<{
-        person: any;
-        box: { x: number; y: number; width: number; height: number };
-        textColor: string;
-      }> = [];
-
       if (faceMatcher && resizedDetections.length > 0) {
         resizedDetections.forEach((detection) => {
           const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
@@ -240,7 +217,6 @@ export default function Home() {
             description: ""
           };
           let textColor = "#ff0000"; // Red for unknown
-          let fullPersonData = null;
 
           if (label !== "unknown") {
             const person = dbPersons.find((p) => p.name === label);
@@ -251,14 +227,6 @@ export default function Home() {
                 description: person.description
               };
               textColor = "#00ff00"; // Green for known
-              fullPersonData = person;
-              
-              // Add to detected persons for overlay buttons (only known persons)
-              currentDetectedPersons.push({
-                person: person,
-                box: detection.detection.box,
-                textColor: textColor
-              });
               
               // Call Gemini Live assistant to describe the person (only if conditions are met)
               // Add additional check to prevent repeated calls for the same person
@@ -269,13 +237,7 @@ export default function Home() {
                                   !detectedPersonsRef.current.has(person.name) &&
                                   (currentTime - lastDetectionTimeRef.current) > 1000; // 1 second minimum between any detections
               
-              // Debug logging for auto-trigger decisions
-              if (isAssistantEnabled && !shouldTrigger) {
-                console.log(`Auto-trigger blocked for ${person.name}: speaking=${isAssistantSpeaking}, cooldown=${isPersonInCooldown(person.name)}, detected=${detectedPersonsRef.current.has(person.name)}`);
-              }
-              
               if (shouldTrigger) {
-                console.log(`Auto-triggering voice for ${person.name}`);
                 detectedPersonsRef.current.add(person.name);
                 lastDetectionTimeRef.current = currentTime;
                 generatePersonDescription(person);
@@ -331,7 +293,7 @@ export default function Home() {
               ctx.strokeStyle = textColor;
               ctx.lineWidth = 2;
               ctx.strokeRect(box.x, box.y, box.width, box.height);
-
+              
               // Draw context info
               const lines = [
                 `👤 ${personInfo.name}`,
@@ -344,12 +306,11 @@ export default function Home() {
             
             // Mode 3: Context info + box + face landmarks
             else if (displayMode === 'nameLandmarks') {
-
               // Draw bounding box
               ctx.strokeStyle = textColor;
               ctx.lineWidth = 2;
               ctx.strokeRect(box.x, box.y, box.width, box.height);
-
+              
               // Draw landmarks
               const landmarks = detection.landmarks;
               if (landmarks) {
@@ -369,14 +330,10 @@ export default function Home() {
               ];
               
               drawContextInfo(box.x, box.y - 10, lines);
-
             }
           }
         });
       }
-
-      // Update detected persons state for overlay buttons
-      setDetectedPersons(currentDetectedPersons);
     };
 
     detectionIntervalRef.current = setInterval(detectFaces, 500); // Reduced from 100ms to 500ms
@@ -417,12 +374,7 @@ export default function Home() {
 
   // Restart face detection when display mode changes (only if camera is already running)
   useEffect(() => {
-    if (
-      isWebcamStarted &&
-      modelsLoaded &&
-      videoRef.current &&
-      canvasRef.current
-    ) {
+    if (isWebcamStarted && modelsLoaded && videoRef.current && canvasRef.current) {
       startFaceDetection();
     }
   }, [displayMode, isWebcamStarted, modelsLoaded]);
@@ -550,11 +502,9 @@ export default function Home() {
           <div className="flex justify-between h-16 sm:h-20">
             <div className="flex items-center">
               <div className="flex items-center space-x-3">
-                <img
-                  src="/logo.png"
-                  alt="Memory Care Logo"
-                  className="w-16 h-16 object-contain"
-                />
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-green-500 rounded-xl flex items-center justify-center">
+                  <span className="text-white font-bold text-lg">MC</span>
+                </div>
                 <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
                   Memory Care
                 </h1>
@@ -563,9 +513,7 @@ export default function Home() {
             <div className="flex items-center space-x-2 sm:space-x-4">
               {user ? (
                 <>
-                  <span className="hidden sm:block text-slate-600 text-sm">
-                    Welcome, {user.email}
-                  </span>
+                  <span className="hidden sm:block text-slate-600 text-sm">Welcome, {user.email}</span>
                   <button
                     onClick={signOut}
                     className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-3 sm:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg"
@@ -605,20 +553,13 @@ export default function Home() {
                   Welcome to Memory Care
                 </h2>
                 <p className="text-slate-600 mb-4 text-sm sm:text-base">
-                  The face recognition system is active. Use the camera feed
-                  below to identify registered individuals.
+                  The face recognition system is active. Use the camera feed below to identify registered individuals.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <Link
-                    href="/person"
-                    className="text-indigo-600 hover:underline font-medium"
-                  >
+                  <Link href="/person" className="text-indigo-600 hover:underline font-medium">
                     👥 Manage Registered Persons
                   </Link>
-                  <Link
-                    href="/gemini-tts-test"
-                    className="text-green-600 hover:underline font-medium"
-                  >
+                  <Link href="/gemini-tts-test" className="text-green-600 hover:underline font-medium">
                     🎤 Test Gemini Text-to-Speech
                   </Link>
                 </div>
@@ -643,38 +584,23 @@ export default function Home() {
               <div className="text-center mb-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center lg:justify-center gap-3 lg:gap-6 mb-6">
                   <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
-                    <div
-                      className={`w-3 h-3 rounded-full ${
-                        modelsLoaded ? "bg-green-500" : "bg-red-500"
-                      } animate-pulse`}
-                    ></div>
+                    <div className={`w-3 h-3 rounded-full ${modelsLoaded ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
                     <span className="text-slate-700 text-sm font-medium">
-                      Models: {modelsLoaded ? "✅ Loaded" : "⏳ Loading..."}
+                      Models: {modelsLoaded ? '✅ Loaded' : '⏳ Loading...'}
                     </span>
                   </div>
-
+                  
                   <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
-                    <div
-                      className={`w-3 h-3 rounded-full ${
-                        facesLoaded ? "bg-green-500" : "bg-red-500"
-                      } animate-pulse`}
-                    ></div>
+                    <div className={`w-3 h-3 rounded-full ${facesLoaded ? 'bg-green-500' : 'bg-red-500'} animate-pulse`}></div>
                     <span className="text-slate-700 text-sm font-medium">
-                      Faces:{" "}
-                      {facesLoaded
-                        ? `✅ ${dbPersons.length} Loaded`
-                        : "⏳ Loading..."}
+                      Faces: {facesLoaded ? `✅ ${dbPersons.length} Loaded` : '⏳ Loading...'}
                     </span>
                   </div>
-
+                  
                   <div className="flex items-center justify-center gap-2 bg-white/50 rounded-xl p-3">
-                    <div
-                      className={`w-3 h-3 rounded-full ${
-                        isWebcamStarted ? "bg-green-500" : "bg-gray-400"
-                      } ${isWebcamStarted ? "animate-pulse" : ""}`}
-                    ></div>
+                    <div className={`w-3 h-3 rounded-full ${isWebcamStarted ? 'bg-green-500' : 'bg-gray-400'} ${isWebcamStarted ? 'animate-pulse' : ''}`}></div>
                     <span className="text-slate-700 text-sm font-medium">
-                      Camera: {isWebcamStarted ? "🎥 Active" : "📷 Inactive"}
+                      Camera: {isWebcamStarted ? '🎥 Active' : '📷 Inactive'}
                     </span>
                   </div>
                   
@@ -689,39 +615,37 @@ export default function Home() {
                     </span>
                   </div>
                 </div>
-
+                
                 {/* Display Mode Toggle */}
                 <div className="mb-6">
-                  <h4 className="text-sm font-semibold text-slate-700 mb-3 text-center">
-                    🎯 Display Mode
-                  </h4>
+                  <h4 className="text-sm font-semibold text-slate-700 mb-3 text-center">🎯 Display Mode</h4>
                   <div className="flex flex-col sm:flex-row justify-center gap-2 sm:gap-3">
                     <button
-                      onClick={() => setDisplayMode("name")}
+                      onClick={() => setDisplayMode('name')}
                       className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                        displayMode === "name"
-                          ? "bg-blue-500 text-white shadow-lg"
-                          : "bg-white/70 text-slate-700 hover:bg-blue-100"
+                        displayMode === 'name'
+                          ? 'bg-blue-500 text-white shadow-lg'
+                          : 'bg-white/70 text-slate-700 hover:bg-blue-100'
                       }`}
                     >
                       � Info Only
                     </button>
                     <button
-                      onClick={() => setDisplayMode("nameBox")}
+                      onClick={() => setDisplayMode('nameBox')}
                       className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                        displayMode === "nameBox"
-                          ? "bg-blue-500 text-white shadow-lg"
-                          : "bg-white/70 text-slate-700 hover:bg-blue-100"
+                        displayMode === 'nameBox'
+                          ? 'bg-blue-500 text-white shadow-lg'
+                          : 'bg-white/70 text-slate-700 hover:bg-blue-100'
                       }`}
                     >
                       📦 Info + Box
                     </button>
                     <button
-                      onClick={() => setDisplayMode("nameLandmarks")}
+                      onClick={() => setDisplayMode('nameLandmarks')}
                       className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                        displayMode === "nameLandmarks"
-                          ? "bg-blue-500 text-white shadow-lg"
-                          : "bg-white/70 text-slate-700 hover:bg-blue-100"
+                        displayMode === 'nameLandmarks'
+                          ? 'bg-blue-500 text-white shadow-lg'
+                          : 'bg-white/70 text-slate-700 hover:bg-blue-100'
                       }`}
                     >
                       🎯 Info + Box + Landmarks
@@ -756,6 +680,20 @@ export default function Home() {
                     >
                       🧪 Test Assistant
                     </button>
+                    
+                    {/* Manual play for last recognized person */}
+                    {lastDescribedPerson && (
+                      <button
+                        onClick={() => {
+                          const person = dbPersons.find(p => p.name === lastDescribedPerson.name);
+                          if (person) generatePersonDescription(person, true);
+                        }}
+                        className="px-4 py-2 rounded-lg text-xs font-medium bg-green-200 text-green-700 hover:bg-green-300 transition-colors"
+                        disabled={isAssistantSpeaking}
+                      >
+                        🔊 Repeat {lastDescribedPerson.name}
+                      </button>
+                    )}
                   </div>
                   {assistantStatus && (
                     <div className="mt-3 text-center">
@@ -765,6 +703,7 @@ export default function Home() {
                     </div>
                   )}
                 </div>
+                
                 {!isWebcamStarted && modelsLoaded && facesLoaded && (
                   <button
                     onClick={startVideo}
@@ -792,51 +731,6 @@ export default function Home() {
                     height="560"
                     className="absolute top-0 left-0 rounded-lg"
                   />
-                  
-                  {/* Overlay Play Buttons for Detected Persons */}
-                  {detectedPersons.map((detectedPerson, index) => {
-                    const { person, box } = detectedPerson;
-                    const isInCooldown = isPersonInCooldown(person.name);
-                    const cooldownTime = personCooldowns.get(person.name);
-                    let remainingMinutes = 0;
-                    
-                    if (cooldownTime) {
-                      const timeLeft = (PERSON_COOLDOWN_MINUTES * 60 * 1000) - (Date.now() - cooldownTime);
-                      remainingMinutes = Math.ceil(timeLeft / (60 * 1000));
-                    }
-                    
-                    return (
-                      <button
-                        key={`${person.name}-${index}`}
-                        onClick={() => {
-                          generatePersonDescription(person, true);
-                          // Reset cooldown when manually triggered
-                          setPersonCooldowns(prev => new Map(prev.set(person.name, Date.now())));
-                        }}
-                        disabled={isAssistantSpeaking}
-                        className={`absolute text-xs font-bold rounded-full w-8 h-8 flex items-center justify-center transition-all duration-200 hover:scale-110 ${
-                          isAssistantSpeaking 
-                            ? 'bg-gray-400 text-gray-600 cursor-not-allowed' 
-                            : isInCooldown 
-                              ? 'bg-orange-500 text-white hover:bg-orange-600' 
-                              : 'bg-green-500 text-white hover:bg-green-600'
-                        }`}
-                        style={{
-                          left: `${box.x + box.width + 5}px`,
-                          top: `${box.y}px`,
-                        }}
-                        title={
-                          isAssistantSpeaking 
-                            ? 'Assistant is currently speaking' 
-                            : isInCooldown 
-                              ? `Play ${person.name} (${remainingMinutes}m cooldown)` 
-                              : `Play ${person.name}`
-                        }
-                      >
-                        {isAssistantSpeaking ? '⏸' : isInCooldown ? `${remainingMinutes}` : '▶'}
-                      </button>
-                    );
-                  })}
                 </div>
               </div>
 
@@ -845,19 +739,10 @@ export default function Home() {
               <div className="text-center bg-white/50 rounded-2xl p-4 border border-blue-100 mt-6">
                 <p className="text-sm sm:text-base text-slate-700">
                   <span className="font-bold">🔍 Recognition Mode:</span> The system will identify registered individuals and display their context.
-
                   <br />
-                  <span className="text-green-600 font-semibold">
-                    Green = Known person
-                  </span>
-                  ,{" "}
-                  <span className="text-red-500 font-semibold">
-                    Red = Unknown person
-                  </span>
+                  <span className="text-green-600 font-semibold">Green = Known person</span>, <span className="text-red-500 font-semibold">Red = Unknown person</span>
                   <br />
                   <span className="font-bold">📋 Context Info:</span> Name, relationship, and description will be shown
-                  <br />
-                  <span className="font-bold">▶️ Play Buttons:</span> Click the green ▶ button next to detected persons to manually trigger voice descriptions and reset their cooldown
                   <br />
                   <span className="font-bold">🤖 AI Assistant:</span> {
                     isAssistantSpeaking ? 'Currently speaking...' :
@@ -866,11 +751,10 @@ export default function Home() {
                   }
                   <br />
                   <span className="font-bold">🎯 Current Display:</span> {
-                    displayMode === 'name' ? '📝 Context information only' :
+                    displayMode === 'name' ? '� Context information only' :
                     displayMode === 'nameBox' ? '📦 Context with bounding boxes' :
                     '🎯 Context, boxes, and facial landmarks'
                   }
-
                 </p>
               </div>
             </div>
@@ -931,13 +815,13 @@ export default function Home() {
 
               <Link
                 href="/signup"
-                className="w-full flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-lg text-white bg-gradient-to-r from-green-500 to-blue-500 hover:bg-indigo-700"
+                className="w-full flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700"
               >
-                Create Account with Email
+                Create Account
               </Link>
               <Link
                 href="/login"
-                className="w-full flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-lg text-white bg-gradient-to-r from-blue-500 to-green-500 hover:bg-indigo-600"
+                className="w-full flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-lg text-indigo-600 bg-indigo-100 hover:bg-indigo-600"
               >
                 Sign in
               </Link>
