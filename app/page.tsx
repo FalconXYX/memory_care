@@ -33,6 +33,7 @@ export default function Home() {
   const [assistantStatus, setAssistantStatus] = useState<string>('');
   const [isAssistantSpeaking, setIsAssistantSpeaking] = useState(false);
   const [lastApiCall, setLastApiCall] = useState<number>(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   // Track last time any speech finished for global cooldown
   const [lastSpeechTime, setLastSpeechTime] = useState<number>(0);
   
@@ -62,6 +63,33 @@ export default function Home() {
   // Track detected persons to prevent API spam
   const detectedPersonsRef = useRef<Set<string>>(new Set());
   const lastDetectionTimeRef = useRef<number>(0);
+
+  // Fullscreen functions
+  const enterFullscreen = async () => {
+    if (document.documentElement.requestFullscreen) {
+      await document.documentElement.requestFullscreen();
+      setIsFullscreen(true);
+    }
+  };
+
+  const exitFullscreen = async () => {
+    if (document.exitFullscreen) {
+      await document.exitFullscreen();
+      setIsFullscreen(false);
+    }
+  };
+
+  // Listen for fullscreen changes (e.g., ESC key)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
 
   // Simple cooldown check using hashmap
   const isPersonInCooldown = (personName: string): boolean => {
@@ -463,8 +491,8 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
     }
   };
 
-  // Start webcam
-  const startVideo = async () => {
+  // Start webcam and enter fullscreen
+  const startVideoAndFullscreen = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 720, height: 560 },
@@ -473,6 +501,8 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         setIsWebcamStarted(true);
+        // Enter fullscreen after starting camera
+        await enterFullscreen();
       }
     } catch (err) {
       setError("Failed to access webcam. Please allow camera permissions.");
@@ -682,13 +712,25 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                     </div>
                   )}
                 </div>
-                {!isWebcamStarted && modelsLoaded && facesLoaded && (
-                  <button
-                    onClick={startVideo}
-                    className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg"
-                  >
-                    🎥 Start Camera
-                  </button>
+                {modelsLoaded && facesLoaded && (
+                  <>
+                    {!isWebcamStarted && (
+                      <button
+                        onClick={startVideoAndFullscreen}
+                        className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg"
+                      >
+                        📺 Start Full Screen
+                      </button>
+                    )}
+                    {isWebcamStarted && !isFullscreen && (
+                      <button
+                        onClick={enterFullscreen}
+                        className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg"
+                      >
+                        📺 Enter Full Screen
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
               {/* Camera Container */}
@@ -709,6 +751,17 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                     height="560"
                     className="absolute top-0 left-0 rounded-lg"
                   />
+                  
+                  {/* Exit Fullscreen Button */}
+                  {isFullscreen && (
+                    <button
+                      onClick={exitFullscreen}
+                      className="absolute top-4 right-4 bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg shadow-lg transition-all duration-200 z-10"
+                      title="Exit Fullscreen"
+                    >
+                      ❌ Exit Fullscreen
+                    </button>
+                  )}
                   
                   {/* Overlay Play Buttons for Detected Persons */}
                   {detectedPersons.map((detectedPerson, index) => {
