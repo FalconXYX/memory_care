@@ -5,6 +5,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase";
 import { useEffect, useRef, useState } from "react";
 import * as faceapi from "face-api.js";
+import { AudioStreamer } from "@/lib/audio-streamer";
+import { audioContext } from "@/lib/audio-utils";
 
 export default function Home() {
   const { user, loading, signOut } = useAuth();
@@ -45,8 +47,13 @@ export default function Home() {
   // Store the interval ref so we can clear it when needed
   const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Refs for assistant audio
-  const assistantAudioRef = useRef<HTMLAudioElement | null>(null);
+  // Audio streaming refs
+  const audioStreamerRef = useRef<AudioStreamer | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  
+  // Track detected persons to prevent API spam
+  const detectedPersonsRef = useRef<Set<string>>(new Set());
+  const lastDetectionTimeRef = useRef<number>(0);
 
   // Simple cooldown check
   const isPersonInCooldown = (personName: string): boolean => {
@@ -56,6 +63,21 @@ export default function Home() {
     const cooldownMs = PERSON_COOLDOWN_MINUTES * 60 * 1000;
     return (Date.now() - lastDescribedPerson.time) < cooldownMs;
   };
+
+  // Initialize audio context and streamer
+  useEffect(() => {
+    if (!audioStreamerRef.current) {
+      audioContext({ id: "memory-care-audio" }).then((audioCtx: AudioContext) => {
+        audioContextRef.current = audioCtx;
+        audioStreamerRef.current = new AudioStreamer(audioCtx);
+        audioStreamerRef.current.onComplete = () => {
+          setIsAssistantSpeaking(false);
+          setAssistantStatus('');
+          setLastSpeechTime(Date.now());
+        };
+      });
+    }
+  }, []);
 
   // Simple function to call Gemini Live API for person description
   const generatePersonDescription = async (person: any, forcePlay = false) => {
@@ -103,6 +125,11 @@ export default function Home() {
     setAssistantStatus(`🎤 Describing ${person.name}...`);
     
     try {
+      // Stop any currently playing audio
+      if (audioStreamerRef.current) {
+        audioStreamerRef.current.stop();
+      }
+
       // Simple prompt
       const prompt = `I see ${person.name}, who is my ${person.relationship}. ${person.description}. Give me a brief, warm reminder about them.`;
 
@@ -125,33 +152,18 @@ export default function Home() {
         const pcmArrayBuffer = await response.arrayBuffer();
         setAssistantStatus(`🎵 Playing description for ${person.name}`);
         
-        // Simple audio handling
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const pcmData = new Int16Array(pcmArrayBuffer);
-        const sampleRate = 24000;
-        const numberOfChannels = 1;
-        
-        const audioBuffer = audioContext.createBuffer(numberOfChannels, pcmData.length, sampleRate);
-        const channelData = audioBuffer.getChannelData(0);
-        
-        for (let i = 0; i < pcmData.length; i++) {
-          channelData[i] = pcmData[i] / 32768.0;
+        // Use the audio streamer for proper playback
+        if (audioStreamerRef.current && audioContextRef.current) {
+          await audioStreamerRef.current.resume();
+          // Convert ArrayBuffer to Uint8Array and stream it
+          const pcmData = new Uint8Array(pcmArrayBuffer);
+          audioStreamerRef.current.addPCM16(pcmData);
+          
+          // Set cooldown
+          setLastDescribedPerson({ name: person.name, time: Date.now() });
+        } else {
+          throw new Error('Audio system not initialized');
         }
-        
-        const source = audioContext.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(audioContext.destination);
-        
-        source.onended = () => {
-          setIsAssistantSpeaking(false);
-          setAssistantStatus('');
-          setLastSpeechTime(Date.now());
-        };
-        
-        source.start(0);
-        
-        // Set cooldown
-        setLastDescribedPerson({ name: person.name, time: Date.now() });
       }
 
     } catch (error) {
@@ -217,8 +229,23 @@ export default function Home() {
               textColor = "#00ff00"; // Green for known
               
               // Call Gemini Live assistant to describe the person (only if conditions are met)
-              if (isAssistantEnabled && !isAssistantSpeaking && !isPersonInCooldown(person.name)) {
+              // Add additional check to prevent repeated calls for the same person
+              const currentTime = Date.now();
+              const shouldTrigger = isAssistantEnabled && 
+                                  !isAssistantSpeaking && 
+                                  !isPersonInCooldown(person.name) &&
+                                  !detectedPersonsRef.current.has(person.name) &&
+                                  (currentTime - lastDetectionTimeRef.current) > 1000; // 1 second minimum between any detections
+              
+              if (shouldTrigger) {
+                detectedPersonsRef.current.add(person.name);
+                lastDetectionTimeRef.current = currentTime;
                 generatePersonDescription(person);
+                
+                // Clear the detection flag after a delay to allow re-detection later
+                setTimeout(() => {
+                  detectedPersonsRef.current.delete(person.name);
+                }, 30000); // 30 seconds before allowing re-detection
               }
             }
           }
@@ -352,11 +379,14 @@ export default function Home() {
     }
   }, [displayMode, isWebcamStarted, modelsLoaded]);
 
-  // Cleanup interval on component unmount
+  // Cleanup interval and audio on component unmount
   useEffect(() => {
     return () => {
       if (detectionIntervalRef.current) {
         clearInterval(detectionIntervalRef.current);
+      }
+      if (audioStreamerRef.current) {
+        audioStreamerRef.current.stop();
       }
     };
   }, []);
@@ -704,17 +734,7 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Audio Player for Assistant */}
-              <div className="flex justify-center mb-4">
-                <audio
-                  ref={assistantAudioRef}
-                  controls
-                  className="w-full max-w-md"
-                  style={{ display: 'none' }}
-                >
-                  Your browser does not support the audio element.
-                </audio>
-              </div>
+              {/* Audio is now handled by AudioStreamer - no need for HTML audio element */}
 
               <div className="text-center bg-white/50 rounded-2xl p-4 border border-blue-100 mt-6">
                 <p className="text-sm sm:text-base text-slate-700">

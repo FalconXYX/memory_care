@@ -25,14 +25,12 @@ export async function POST(request: NextRequest) {
     
     // Configuration for Gemini 2.0 Flash Live with audio output
     const config: LiveConnectConfig = {
-      // Direct fields for new SDK versions
       responseModalities: [Modality.AUDIO],
       speechConfig: {
         voiceConfig: {
           prebuiltVoiceConfig: { voiceName: 'Charon' }
         }
       },
-      // For backward compatibility: ensure generationConfig includes audio modality
       generationConfig: {
         responseModalities: [Modality.AUDIO]
       },
@@ -43,8 +41,8 @@ export async function POST(request: NextRequest) {
 
     // Collect audio chunks
     const audioChunks: ArrayBuffer[] = [];
-    let isReceivingAudio = false;
     let sessionComplete = false;
+    let hasReceivedAudio = false;
 
     // Set up event callbacks
     const callbacks: LiveCallbacks = {
@@ -52,52 +50,33 @@ export async function POST(request: NextRequest) {
         console.log('Live API connection opened');
       },
       onmessage: (message) => {
-        console.log('Received message:', JSON.stringify(message, null, 2));
-        
         // Handle incoming messages and look for audio data
         if (message.serverContent?.modelTurn) {
           const parts = message.serverContent.modelTurn.parts || [];
-          console.log('Found parts:', parts.length);
           
-          // Look for audio parts - check multiple possible audio formats
+          // Look for audio parts
           const audioParts = parts.filter(
-            (p) => p.inlineData && (
-              p.inlineData.mimeType?.startsWith("audio/pcm") ||
-              p.inlineData.mimeType?.startsWith("audio/") ||
-              p.inlineData.mimeType?.includes("audio")
-            )
+            (p) => p.inlineData && p.inlineData.mimeType?.startsWith("audio/pcm")
           );
-          
-          console.log('Found audio parts:', audioParts.length);
-          if (audioParts.length > 0) {
-            console.log('Audio part mime types:', audioParts.map(p => p.inlineData?.mimeType));
-          }
           
           // Process audio data
           audioParts.forEach((part) => {
             if (part.inlineData?.data) {
-              console.log('Processing audio data, length:', part.inlineData.data.length);
               // Convert base64 to ArrayBuffer
               const audioData = Uint8Array.from(atob(part.inlineData.data), c => c.charCodeAt(0));
               audioChunks.push(audioData.buffer);
-              isReceivingAudio = true;
+              hasReceivedAudio = true;
             }
           });
-          
-          // Log text parts for debugging
-          const textParts = parts.filter(p => p.text);
-          if (textParts.length > 0) {
-            console.log('Received text parts:', textParts.map(p => p.text));
-          }
         }
         
         if (message.serverContent?.turnComplete) {
-          console.log('Turn complete received');
           sessionComplete = true;
         }
       },
       onerror: (error) => {
         console.error('Live API error:', error);
+        sessionComplete = true;
       },
       onclose: (event) => {
         console.log('Live API connection closed');
@@ -112,9 +91,7 @@ export async function POST(request: NextRequest) {
       callbacks
     });
 
-    // Send the text message with explicit request for audio response
-    console.log('Sending text to Gemini Live:', text);
-    // Use simple turns array with text for Live API to return audio
+    // Send the text message
     session.sendClientContent({
       turns: [{ text }],
       turnComplete: true
@@ -128,26 +105,15 @@ export async function POST(request: NextRequest) {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    // Give a small buffer time for any remaining audio chunks
-    await new Promise(resolve => setTimeout(resolve, 500));
-
     // Close the session
     session.close();
 
-    console.log('Session complete. Audio chunks received:', audioChunks.length);
-    console.log('Is receiving audio:', isReceivingAudio);
-
-    // Check if we have audio chunks regardless of the flag
-    if (audioChunks.length === 0) {
+    // Check if we have audio chunks
+    if (audioChunks.length === 0 || !hasReceivedAudio) {
       return NextResponse.json(
         { 
           error: 'No audio received from Gemini Live API',
-          details: 'The Live API responded but did not include audio data. This may be due to configuration issues or the model not supporting audio output for this request.',
-          debugging: {
-            sessionComplete,
-            audioChunksReceived: audioChunks.length,
-            isReceivingAudio
-          }
+          details: 'The Live API responded but did not include audio data.'
         },
         { status: 500 }
       );
@@ -164,7 +130,7 @@ export async function POST(request: NextRequest) {
       offset += chunk.byteLength;
     }
 
-    // Return the audio as a WAV-like response
+    // Return the audio as PCM response
     return new NextResponse(combinedAudio, {
       status: 200,
       headers: {
