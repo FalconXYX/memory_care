@@ -26,6 +26,11 @@ export default function Home() {
   }>>([])
   const [faceMatcher, setFaceMatcher] = useState<any>(null)
   const [referenceImageLoaded, setReferenceImageLoaded] = useState(false)
+  const [referencePeople, setReferencePeople] = useState<Array<{name: string, loaded: boolean}>>([
+    { name: 'Thomas', loaded: false },
+    { name: 'Parth', loaded: false }
+  ])
+  const [debugMode, setDebugMode] = useState(false)
 
   // Load face-api models when user is logged in
   useEffect(() => {
@@ -43,8 +48,8 @@ export default function Home() {
         console.log('All models loaded successfully')
         setModelsLoaded(true)
 
-        // Load reference image for Thomas
-        await loadReferenceImage()
+        // Load reference images for Thomas and Parth
+        await loadReferenceImages()
       } catch (err) {
         console.error('Error loading models:', err)
         setError('Failed to load face detection models. Please ensure all model files are in the /public/models directory.')
@@ -54,39 +59,108 @@ export default function Home() {
     loadModels()
   }, [user])
 
-  // Load reference image and create face matcher
-  const loadReferenceImage = async () => {
+  // Load reference images and create face matcher
+  const loadReferenceImages = async () => {
     try {
-      console.log('Loading reference image...')
+      console.log('Loading reference images...')
       
-      // Load the reference image
-      const img = await faceapi.fetchImage('/onePersonFace.png')
+      const labeledDescriptors = []
       
-      // Detect face in reference image
-      const detection = await faceapi
-        .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
-        .withFaceLandmarks()
-        .withFaceDescriptor()
-
-      if (detection) {
-        // Create labeled face descriptor for Thomas
-        const labeledDescriptor = new faceapi.LabeledFaceDescriptors(
-          'Thomas',
-          [detection.descriptor]
-        )
+      // Load Thomas's image
+      try {
+        console.log('Attempting to load Thomas image...')
+        const thomasImg = await faceapi.fetchImage('/onePersonFace.png')
+        console.log('Thomas image fetched, dimensions:', thomasImg.width, 'x', thomasImg.height)
         
-        // Create face matcher
-        const matcher = new faceapi.FaceMatcher([labeledDescriptor], 0.6)
+        const thomasDetection = await faceapi
+          .detectSingleFace(thomasImg, new faceapi.TinyFaceDetectorOptions({
+            inputSize: 416,
+            scoreThreshold: 0.3  // Lower threshold for better detection
+          }))
+          .withFaceLandmarks()
+          .withFaceDescriptor()
+
+        if (thomasDetection) {
+          console.log('Thomas face detected with score:', thomasDetection.detection.score)
+          labeledDescriptors.push(
+            new faceapi.LabeledFaceDescriptors('Thomas', [thomasDetection.descriptor])
+          )
+          setReferencePeople(prev => prev.map(p => 
+            p.name === 'Thomas' ? { ...p, loaded: true } : p
+          ))
+          console.log('Thomas reference image loaded successfully')
+        } else {
+          console.warn('No face detected in Thomas image (onePersonFace.png)')
+        }
+      } catch (err) {
+        console.error('Error loading Thomas image:', err)
+      }
+
+      // Load Parth's image
+      try {
+        console.log('Attempting to load Parth image...')
+        const parthImg = await faceapi.fetchImage('/onePersonFace2.png')
+        console.log('Parth image fetched, dimensions:', parthImg.width, 'x', parthImg.height)
+        
+        const parthDetection = await faceapi
+          .detectSingleFace(parthImg, new faceapi.TinyFaceDetectorOptions({
+            inputSize: 416,
+            scoreThreshold: 0.3  // Lower threshold for better detection
+          }))
+          .withFaceLandmarks()
+          .withFaceDescriptor()
+
+        if (parthDetection) {
+          console.log('Parth face detected with score:', parthDetection.detection.score)
+          labeledDescriptors.push(
+            new faceapi.LabeledFaceDescriptors('Parth', [parthDetection.descriptor])
+          )
+          setReferencePeople(prev => prev.map(p => 
+            p.name === 'Parth' ? { ...p, loaded: true } : p
+          ))
+          console.log('Parth reference image loaded successfully')
+        } else {
+          console.warn('No face detected in Parth image (onePersonFace2.png)')
+          console.log('Trying with different detection settings...')
+          
+          // Try with more permissive settings
+          const retryDetection = await faceapi
+            .detectSingleFace(parthImg, new faceapi.TinyFaceDetectorOptions({
+              inputSize: 320,
+              scoreThreshold: 0.1
+            }))
+            .withFaceLandmarks()
+            .withFaceDescriptor()
+            
+          if (retryDetection) {
+            console.log('Parth face detected on retry with score:', retryDetection.detection.score)
+            labeledDescriptors.push(
+              new faceapi.LabeledFaceDescriptors('Parth', [retryDetection.descriptor])
+            )
+            setReferencePeople(prev => prev.map(p => 
+              p.name === 'Parth' ? { ...p, loaded: true } : p
+            ))
+            console.log('Parth reference image loaded successfully (retry)')
+          } else {
+            console.error('Still no face detected in Parth image after retry')
+          }
+        }
+      } catch (err) {
+        console.error('Error loading Parth image:', err)
+      }
+
+      // Create face matcher if we have at least one reference
+      if (labeledDescriptors.length > 0) {
+        const matcher = new faceapi.FaceMatcher(labeledDescriptors, 0.6)
         setFaceMatcher(matcher)
         setReferenceImageLoaded(true)
-        
-        console.log('Reference image loaded and processed successfully')
+        console.log(`Face matcher created with ${labeledDescriptors.length} reference faces`)
       } else {
-        setError('No face detected in reference image (onePersonFace.png)')
+        setError('No reference faces could be loaded. Please check onePersonFace.png and onePersonFace2.png in /public directory.')
       }
     } catch (err) {
-      console.error('Error loading reference image:', err)
-      setError('Failed to load reference image. Please ensure onePersonFace.png is in the /public directory.')
+      console.error('Error loading reference images:', err)
+      setError('Failed to load reference images. Please ensure images are in the /public directory.')
     }
   }
 
@@ -208,25 +282,41 @@ export default function Home() {
           let displayText = ''
           let textColor = '#ff0000' // Red for unknown
           
-          if (label === 'Thomas') {
+          if (label === 'Thomas' || label === 'Parth') {
             const confidence = Math.round((1 - distance) * 100)
-            displayText = `Thomas (${confidence}%)`
-            textColor = '#00ff00' // Green for Thomas
+            displayText = `${label} (${confidence}%)`
+            textColor = '#00ff00' // Green for known faces
+            
+            if (debugMode) {
+              displayText += `\nDist: ${distance.toFixed(3)}`
+            }
           } else {
             displayText = 'Unknown Person'
+            if (debugMode) {
+              displayText += `\nDist: ${distance.toFixed(3)}`
+            }
           }
           
           if (ctx) {
             const box = detection.detection.box
             ctx.fillStyle = textColor
-            ctx.font = '20px Arial'
+            ctx.font = debugMode ? '14px Arial' : '20px Arial'
             ctx.strokeStyle = 'black'
             ctx.lineWidth = 3
             
             // Draw text with background for better visibility
-            const y = box.y - 10
-            ctx.strokeText(displayText, box.x, y)
-            ctx.fillText(displayText, box.x, y)
+            const lines = displayText.split('\n')
+            lines.forEach((line, lineIndex) => {
+              const y = box.y - 10 - (lines.length - 1 - lineIndex) * 18
+              ctx.strokeText(line, box.x, y)
+              ctx.fillText(line, box.x, y)
+            })
+            
+            if (debugMode) {
+              // Draw detection score
+              ctx.fillStyle = '#ffff00'
+              ctx.fillText(`Score: ${detection.detection.score.toFixed(3)}`, box.x, box.y + box.height + 20)
+            }
           }
         })
       } else if (mode === 'registration') {
@@ -350,16 +440,20 @@ export default function Home() {
               )}
 
               <div className="text-center mb-6">
-                <div className="flex items-center justify-center gap-4 mb-4">
+                <div className="flex items-center justify-center gap-4 mb-4 flex-wrap">
                   <div className={`w-4 h-4 rounded-full ${modelsLoaded ? 'bg-green-500' : 'bg-red-500'}`}></div>
                   <span className="text-gray-700">
                     Models: {modelsLoaded ? 'Loaded' : 'Loading...'}
                   </span>
                   
-                  <div className={`w-4 h-4 rounded-full ${referenceImageLoaded ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                  <span className="text-gray-700">
-                    Thomas Reference: {referenceImageLoaded ? 'Loaded' : 'Loading...'}
-                  </span>
+                  {referencePeople.map((person) => (
+                    <div key={person.name} className="flex items-center gap-2">
+                      <div className={`w-4 h-4 rounded-full ${person.loaded ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                      <span className="text-gray-700">
+                        {person.name}: {person.loaded ? 'Loaded' : 'Loading...'}
+                      </span>
+                    </div>
+                  ))}
                   
                   <div className={`w-4 h-4 rounded-full ${isWebcamStarted ? 'bg-green-500' : 'bg-gray-400'}`}></div>
                   <span className="text-gray-700">
@@ -398,9 +492,34 @@ export default function Home() {
                     >
                       Add New Face
                     </button>
+                    <button
+                      onClick={() => setDebugMode(!debugMode)}
+                      className={`px-4 py-2 rounded font-medium ${
+                        debugMode
+                          ? 'bg-purple-500 text-white'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                    >
+                      {debugMode ? 'Debug ON' : 'Debug OFF'}
+                    </button>
                   </div>
                 )}
               </div>
+
+              {/* Registered People Display */}
+              {referencePeople.some(p => p.loaded) && (
+                <div className="bg-gray-50 p-4 rounded-lg mb-6">
+                  <h4 className="text-lg font-semibold mb-4">Registered People</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {referencePeople.filter(p => p.loaded).map((person) => (
+                      <div key={person.name} className="bg-white p-3 rounded border">
+                        <div className="font-medium text-gray-800">{person.name}</div>
+                        <div className="text-sm text-gray-600">Reference Image Loaded</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Registration Form */}
               {mode === 'registration' && isWebcamStarted && (
@@ -483,9 +602,11 @@ export default function Home() {
                 <p className="text-sm">
                   {mode === 'recognition' ? (
                     <>
-                      <strong>Recognition Mode:</strong> The system will detect if Thomas is in the camera view.
+                      <strong>Recognition Mode:</strong> The system will detect Thomas, Parth, or unknown people.
                       <br />
-                      Green text = Thomas detected, Red text = Unknown person
+                      Green text = Known person (Thomas/Parth), Red text = Unknown person
+                      <br />
+                      Multiple people can be detected simultaneously
                     </>
                   ) : (
                     <>
