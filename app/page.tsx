@@ -436,11 +436,10 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
             ctx.lineWidth = 2;
             ctx.strokeRect(drawX, box.y, box.width, box.height);
 
-            // Draw context info
+            // Draw context info (without description)
             const lines = [
               `👤 ${personInfo.name}`,
-              ...(personInfo.relationship ? [`💝 ${personInfo.relationship}`] : []),
-              ...(personInfo.description ? [`📝 ${personInfo.description}`] : [])
+              ...(personInfo.relationship ? [`💝 ${personInfo.relationship}`] : [])
             ];
             
             // Draw context info at adjusted X
@@ -1125,6 +1124,37 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
 
               {/* Audio is now handled by AudioStreamer - no need for HTML audio element */}
             </div>
+
+            {/* Description Caption Area */}
+            {detectedPersons.length > 0 && (
+              <div className={`${isFullscreen ? 'fixed bottom-6 left-6 right-6' : 'mt-6'} bg-black/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-600/50`}>
+                <div className="text-center">
+                  <h4 className="text-sm font-semibold text-white/90 mb-2">Currently Detected</h4>
+                  <div className="space-y-2">
+                    {detectedPersons.map((detectedPerson, index) => (
+                      <div key={`${detectedPerson.person.name}-${index}`} className="bg-white/10 rounded-xl p-3 border border-white/20">
+                        <div className="text-white">
+                          <div className="flex items-center justify-center space-x-2 mb-2">
+                            <span className="font-semibold">{detectedPerson.person.name}</span>
+                            {detectedPerson.person.relationship && (
+                              <>
+                                <span className="text-white/60">•</span>
+                                <span className="text-white/80">{detectedPerson.person.relationship}</span>
+                              </>
+                            )}
+                          </div>
+                          {detectedPerson.person.description && (
+                            <p className="text-sm text-white/90 leading-relaxed">
+                              📝 {detectedPerson.person.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="text-center px-4">
