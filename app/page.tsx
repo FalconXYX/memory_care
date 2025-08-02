@@ -426,9 +426,15 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
             };
 
             // Draw bounding box
+            // Compute drawing X coordinate to account for mirrored video
+            let drawX = box.x;
+            if (facingMode === 'user') {
+              // Mirror horizontally: flip x coordinate
+              drawX = canvas.width - box.x - box.width;
+            }
             ctx.strokeStyle = textColor;
             ctx.lineWidth = 2;
-            ctx.strokeRect(box.x, box.y, box.width, box.height);
+            ctx.strokeRect(drawX, box.y, box.width, box.height);
 
             // Draw context info
             const lines = [
@@ -437,7 +443,8 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
               ...(personInfo.description ? [`📝 ${personInfo.description}`] : [])
             ];
             
-            drawContextInfo(box.x, box.y - 10, lines);
+            // Draw context info at adjusted X
+            drawContextInfo(drawX, box.y - 10, lines);
           }
         });
       }
@@ -969,14 +976,14 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                       autoPlay
                       muted
                       onPlay={handleVideoPlay}
-                      className={`${isFullscreen ? 'max-h-full max-w-full' : 'rounded-2xl'} ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`}
+                      className={`${isFullscreen ? 'max-h-full max-w-full' : 'rounded-2xl'} ${facingMode === 'user' && isFullscreen ? 'scale-x-[-1]' : ''}`}
                       style={isFullscreen ? { height: '100vh', width: 'auto' } : {}}
                     />
                     <canvas
                       ref={canvasRef}
                       width="720"
                       height="560"
-                      className={`absolute top-0 left-0 ${isFullscreen ? '' : 'rounded-2xl'} ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`}
+                      className={`absolute top-0 left-0 ${isFullscreen ? '' : 'rounded-2xl'} ${facingMode === 'user' && isFullscreen ? 'scale-x-[-1]' : ''}`}
                       style={isFullscreen ? { 
                         height: '100vh', 
                         width: 'auto',
@@ -1003,7 +1010,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 11.293c0 1.297-.908 2.35-2.026 2.35-1.119 0-2.026-1.053-2.026-2.35 0-1.297.907-2.35 2.026-2.35 1.118 0 2.026 1.053 2.026 2.35z" />
                                 </svg>
-                                <span>Voice ON</span>
+                                <span>Voice Assistant ON</span>
                               </span>
                             ) : (
                               <span className="flex items-center space-x-2">
@@ -1011,7 +1018,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
                                 </svg>
-                                <span>Voice OFF</span>
+                                <span>Voice Assistant OFF</span>
                               </span>
                             )}
                           </button>
