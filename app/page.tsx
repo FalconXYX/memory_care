@@ -29,6 +29,118 @@ export default function Home() {
     'name'
   )
 
+  // Store the interval ref so we can clear it when needed
+  const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Separate function for face detection that can be restarted
+  const startFaceDetection = () => {
+    // Clear any existing interval
+    if (detectionIntervalRef.current) {
+      clearInterval(detectionIntervalRef.current);
+    }
+
+    const detectFaces = async () => {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      
+      if (!video || !canvas) return;
+
+      const detections = await faceapi
+        .detectAllFaces(
+          video,
+          new faceapi.TinyFaceDetectorOptions({
+            inputSize: 416,
+            scoreThreshold: 0.5,
+          })
+        )
+        .withFaceLandmarks()
+        .withFaceDescriptors();
+
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+
+      const displaySize = { width: video.width, height: video.height };
+      const resizedDetections = faceapi.resizeResults(detections, displaySize);
+
+      if (faceMatcher && resizedDetections.length > 0) {
+        resizedDetections.forEach((detection) => {
+          const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
+          const { label, distance } = bestMatch;
+
+          let displayText = `Unknown (${(1 - distance).toFixed(2)})`;
+          let textColor = "#ff0000"; // Red for unknown
+
+          if (label !== "unknown") {
+            const person = dbPersons.find((p) => p.name === label);
+            displayText = `${person?.name} (${person?.relationship})`;
+            textColor = "#00ff00"; // Green for known
+          }
+
+          if (ctx) {
+            const box = detection.detection.box;
+
+            // Mode 1: Just name appearing
+            if (displayMode === 'name') {
+              ctx.fillStyle = textColor;
+              ctx.font = "20px Arial";
+              ctx.strokeStyle = "black";
+              ctx.lineWidth = 3;
+              ctx.strokeText(displayText, box.x, box.y - 10);
+              ctx.fillText(displayText, box.x, box.y - 10);
+            }
+            
+            // Mode 2: Name + box appearing
+            else if (displayMode === 'nameBox') {
+              // Draw bounding box
+              ctx.strokeStyle = textColor;
+              ctx.lineWidth = 2;
+              ctx.strokeRect(box.x, box.y, box.width, box.height);
+              
+              // Draw text
+              ctx.fillStyle = textColor;
+              ctx.font = "20px Arial";
+              ctx.strokeStyle = "black";
+              ctx.lineWidth = 3;
+              ctx.strokeText(displayText, box.x, box.y - 10);
+              ctx.fillText(displayText, box.x, box.y - 10);
+            }
+            
+            // Mode 3: Name + box + face landmarks
+            else if (displayMode === 'nameLandmarks') {
+              // Draw bounding box
+              ctx.strokeStyle = textColor;
+              ctx.lineWidth = 2;
+              ctx.strokeRect(box.x, box.y, box.width, box.height);
+              
+              // Draw landmarks
+              const landmarks = detection.landmarks;
+              if (landmarks) {
+                ctx.fillStyle = textColor;
+                landmarks.positions.forEach((point) => {
+                  ctx.beginPath();
+                  ctx.arc(point.x, point.y, 1, 0, 2 * Math.PI);
+                  ctx.fill();
+                });
+              }
+              
+              // Draw text
+              ctx.fillStyle = textColor;
+              ctx.font = "20px Arial";
+              ctx.strokeStyle = "black";
+              ctx.lineWidth = 3;
+              ctx.strokeText(displayText, box.x, box.y - 10);
+              ctx.fillText(displayText, box.x, box.y - 10);
+            }
+          }
+        });
+      }
+    };
+
+    detectionIntervalRef.current = setInterval(detectFaces, 100);
+  };
+
   // Load face-api models and fetch faces from DB
   useEffect(() => {
     if (!user) return;
@@ -61,6 +173,22 @@ export default function Home() {
 
     loadAssets();
   }, [user]);
+
+  // Restart face detection when display mode changes (only if camera is already running)
+  useEffect(() => {
+    if (isWebcamStarted && modelsLoaded && videoRef.current && canvasRef.current) {
+      startFaceDetection();
+    }
+  }, [displayMode, isWebcamStarted, modelsLoaded]);
+
+  // Cleanup interval on component unmount
+  useEffect(() => {
+    return () => {
+      if (detectionIntervalRef.current) {
+        clearInterval(detectionIntervalRef.current);
+      }
+    };
+  }, []);
 
   // Load faces from the database and create a face matcher
   const loadFacesFromDB = async (persons: any[]) => {
@@ -142,104 +270,7 @@ export default function Home() {
     const displaySize = { width: video.width, height: video.height };
     faceapi.matchDimensions(canvas, displaySize);
 
-    const detectFaces = async () => {
-      if (!video || !canvas) return;
-
-      const detections = await faceapi
-        .detectAllFaces(
-          video,
-          new faceapi.TinyFaceDetectorOptions({
-            inputSize: 416,
-            scoreThreshold: 0.5,
-          })
-        )
-        .withFaceLandmarks()
-        .withFaceDescriptors();
-
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-      }
-
-      const resizedDetections = faceapi.resizeResults(detections, displaySize);
-
-      if (faceMatcher && resizedDetections.length > 0) {
-        resizedDetections.forEach((detection) => {
-          const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
-          const { label, distance } = bestMatch;
-
-          let displayText = `Unknown (${(1 - distance).toFixed(2)})`;
-          let textColor = "#ff0000"; // Red for unknown
-
-          if (label !== "unknown") {
-            const person = dbPersons.find((p) => p.name === label);
-            displayText = `${person?.name} (${person?.relationship})`;
-            textColor = "#00ff00"; // Green for known
-          }
-
-          if (ctx) {
-            const box = detection.detection.box;
-
-            // Mode 1: Just name appearing
-            if (displayMode === 'name') {
-              ctx.fillStyle = textColor;
-              ctx.font = "20px Arial";
-              ctx.strokeStyle = "black";
-              ctx.lineWidth = 3;
-              ctx.strokeText(displayText, box.x, box.y - 10);
-              ctx.fillText(displayText, box.x, box.y - 10);
-            }
-            
-            // Mode 2: Name + box appearing
-            else if (displayMode === 'nameBox') {
-              // Draw bounding box
-              ctx.strokeStyle = textColor;
-              ctx.lineWidth = 2;
-              ctx.strokeRect(box.x, box.y, box.width, box.height);
-              
-              // Draw text
-              ctx.fillStyle = textColor;
-              ctx.font = "20px Arial";
-              ctx.strokeStyle = "black";
-              ctx.lineWidth = 3;
-              ctx.strokeText(displayText, box.x, box.y - 10);
-              ctx.fillText(displayText, box.x, box.y - 10);
-            }
-            
-            // Mode 3: Name + box + face landmarks
-            else if (displayMode === 'nameLandmarks') {
-              // Draw bounding box
-              ctx.strokeStyle = textColor;
-              ctx.lineWidth = 2;
-              ctx.strokeRect(box.x, box.y, box.width, box.height);
-              
-              // Draw landmarks
-              const landmarks = detection.landmarks;
-              if (landmarks) {
-                ctx.fillStyle = textColor;
-                landmarks.positions.forEach((point) => {
-                  ctx.beginPath();
-                  ctx.arc(point.x, point.y, 1, 0, 2 * Math.PI);
-                  ctx.fill();
-                });
-              }
-              
-              // Draw text
-              ctx.fillStyle = textColor;
-              ctx.font = "20px Arial";
-              ctx.strokeStyle = "black";
-              ctx.lineWidth = 3;
-              ctx.strokeText(displayText, box.x, box.y - 10);
-              ctx.fillText(displayText, box.x, box.y - 10);
-            }
-          }
-        });
-      }
-    };
-
-    const interval = setInterval(detectFaces, 100);
-
-    return () => clearInterval(interval);
+    startFaceDetection();
   };
 
   const handleGoogleSignIn = async () => {
