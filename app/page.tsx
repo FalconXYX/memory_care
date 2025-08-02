@@ -32,9 +32,9 @@ export default function Home() {
   const [displayMode, setDisplayMode] = useState<
     "name" | "nameBox" | "nameLandmarks"
   >("name");
-  const [isAssistantEnabled, setIsAssistantEnabled] = useState(false);
+  const [isAssistantEnabled, setIsAssistantEnabled] = useState(true);
   const [assistantStatus, setAssistantStatus] = useState<string>("");
-  const [isAssistantSpeaking, setIsAssistantSpeaking] = useState(true);
+  const [isAssistantSpeaking, setIsAssistantSpeaking] = useState(false);
   const [lastApiCall, setLastApiCall] = useState<number>(0);
   // Track last time any speech finished for global cooldown
   const [lastSpeechTime, setLastSpeechTime] = useState<number>(0);
@@ -90,11 +90,12 @@ export default function Home() {
     return isInCooldown;
   };
 
-  // Initialize audio context and streamer
+  // Initialize audio context if needed (fallback)
   useEffect(() => {
-    if (!audioStreamerRef.current) {
-      audioContext({ id: "memory-care-audio" }).then(
-        (audioCtx: AudioContext) => {
+    const initAudio = async () => {
+      if (!audioContextRef.current && isWebcamStarted) {
+        try {
+          const audioCtx = await audioContext({ id: "memory-care-audio" });
           audioContextRef.current = audioCtx;
           audioStreamerRef.current = new AudioStreamer(audioCtx);
           audioStreamerRef.current.onComplete = () => {
@@ -102,10 +103,17 @@ export default function Home() {
             setAssistantStatus("");
             setLastSpeechTime(Date.now());
           };
+          if (audioCtx.state === "suspended") {
+            await audioCtx.resume();
+          }
+          setIsAssistantEnabled(true);
+        } catch (err) {
+          console.error("Failed to initialize audio system:", err);
         }
-      );
-    }
-  }, []);
+      }
+    };
+    initAudio();
+  }, [isWebcamStarted]);
 
   // Simple function to call Gemini Live API for person description
   const generatePersonDescription = async (person: any, forcePlay = false) => {
@@ -561,9 +569,10 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
     }
   };
 
-  // Start webcam
+  // Start webcam and initialize audio
   const startVideo = async () => {
     try {
+      // Start video stream
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 720, height: 560 },
       });
@@ -571,6 +580,33 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         setIsWebcamStarted(true);
+      }
+
+      // Initialize audio system
+      if (!audioContextRef.current) {
+        try {
+          const audioCtx = await audioContext({ id: "memory-care-audio" });
+          audioContextRef.current = audioCtx;
+          audioStreamerRef.current = new AudioStreamer(audioCtx);
+          audioStreamerRef.current.onComplete = () => {
+            setIsAssistantSpeaking(false);
+            setAssistantStatus("");
+            setLastSpeechTime(Date.now());
+          };
+          // Resume audio context (required by some browsers)
+          if (audioCtx.state === "suspended") {
+            await audioCtx.resume();
+          }
+          console.log("Audio system initialized successfully");
+          // Trigger a user interaction to unlock audio context
+          await audioCtx.resume();
+          setIsAssistantEnabled(true);
+        } catch (audioErr) {
+          console.error("Failed to initialize audio system:", audioErr);
+          setError(
+            "Failed to initialize audio system. Please check your browser settings."
+          );
+        }
       }
     } catch (err) {
       setError("Failed to access webcam. Please allow camera permissions.");
