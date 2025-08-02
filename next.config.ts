@@ -26,10 +26,7 @@ const nextConfig = {
 
     return config;
   },
-  // Enable experimental features for better serverless compatibility
-  experimental: {
-    serverComponentsExternalPackages: ['@google/genai'],
-  },
+  serverExternalPackages: ['@google/genai'],
 };
 
 module.exports = nextConfig;

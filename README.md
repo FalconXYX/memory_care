@@ -53,13 +53,6 @@ npm run dev
 2. Click "👥 Manage Registered Persons" to add people to the database
 3. Return to the main page and start the camera to begin recognition
 
-### Enhanced Text-to-Speech Testing
-1. Click "🎤 Test Gemini Text-to-Speech" from the main page
-2. Enter text or select from sample phrases
-3. Click "Generate Enhanced Speech" - Gemini will optimize your text for natural delivery
-4. Listen to the improved, more conversational speech
-5. Compare the original vs. Gemini-enhanced version in the status messages
-
 ## API Endpoints
 
 ### `/api/gemini-tts` (POST)

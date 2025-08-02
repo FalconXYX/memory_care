@@ -141,10 +141,10 @@ export default function PersonListPage() {
                   <div>
                     <h2 className="text-xl sm:text-2xl font-bold text-slate-800 flex items-center">
                       <User className="w-6 h-6 mr-3 text-blue-600" />
-                      Memories{" "}
+                      Registered Persons
                     </h2>
                     <p className="text-slate-600 text-sm mt-1">
-                      Manage your memories for face recognition
+                      Manage your registered individuals for face recognition
                     </p>
                   </div>
                 </div>
@@ -175,7 +175,7 @@ export default function PersonListPage() {
               <div className="text-center py-12">
                 <User className="w-16 h-16 text-slate-400 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-slate-700 mb-2">
-                  No Memories registered yet
+                  No persons registered yet
                 </h3>
                 <p className="text-slate-500 mb-6">
                   Start by adding your first person to enable face recognition.
@@ -198,7 +198,7 @@ export default function PersonListPage() {
                     {persons.length === 1 ? "person" : "persons"} registered
                   </p>
                 </div>
-
+                
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                   {persons.map((person) => (
                     <div
@@ -219,7 +219,7 @@ export default function PersonListPage() {
                           <User className="w-16 h-16 text-slate-400" />
                         </div>
                       )}
-
+                      
                       <div className="p-4">
                         <h3 className="text-lg font-semibold text-slate-800 mb-1">
                           {person.name}
@@ -230,7 +230,7 @@ export default function PersonListPage() {
                         <p className="text-slate-600 text-sm line-clamp-2 mb-4">
                           {person.description}
                         </p>
-
+                        
                         <div className="flex gap-2">
                           <Link
                             href={`/person/${person.id}/edit`}
@@ -249,9 +249,7 @@ export default function PersonListPage() {
                             }`}
                           >
                             <Trash2 className="w-4 h-4 mr-1" />
-                            {deletingIds.has(person.id)
-                              ? "Deleting..."
-                              : "Delete"}
+                            {deletingIds.has(person.id) ? "Deleting..." : "Delete"}
                           </button>
                         </div>
                       </div>
