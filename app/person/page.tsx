@@ -3,7 +3,15 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
-import { ArrowLeft, Plus, Edit, Trash2, User } from "lucide-react";
+import {
+  ArrowLeft,
+  Plus,
+  Edit,
+  Trash2,
+  User,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 
 interface Person {
   id: string;
@@ -13,36 +21,68 @@ interface Person {
   presignedImageUrl?: string;
 }
 
+interface PaginationInfo {
+  currentPage: number;
+  totalPages: number;
+  totalItems: number;
+  itemsPerPage: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+}
+
+interface PersonsResponse {
+  data: Person[];
+  pagination: PaginationInfo;
+}
+
 export default function PersonListPage() {
   const { user, signOut } = useAuth();
   const [persons, setPersons] = useState<Person[]>([]);
+  const [pagination, setPagination] = useState<PaginationInfo | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
   const [isLoading, setIsLoading] = useState(true);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
+  const fetchPersons = async (page: number = 1) => {
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null); // Clear previous errors
+      const response = await fetch(
+        `/api/persons?userId=${user.id}&page=${page}&limit=${itemsPerPage}`
+      );
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData.error || `HTTP ${response.status}: ${response.statusText}`
+        );
+      }
+      const data: PersonsResponse = await response.json();
+      setPersons(data.data);
+      setPagination(data.pagination);
+      setCurrentPage(data.pagination.currentPage);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchPersons = async () => {
-      if (!user) {
-        setIsLoading(false);
-        return;
-      }
+    fetchPersons(currentPage);
+  }, [user, currentPage]);
 
-      try {
-        const response = await fetch(`/api/persons?userId=${user.id}`);
-        if (!response.ok) {
-          throw new Error("Failed to fetch persons");
-        }
-        const data = await response.json();
-        setPersons(data);
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchPersons();
-  }, [user]);
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= (pagination?.totalPages || 1)) {
+      setCurrentPage(newPage);
+    }
+  };
 
   const handleDelete = async (personId: string, personName: string) => {
     const confirmed = window.confirm(
@@ -63,7 +103,8 @@ export default function PersonListPage() {
         throw new Error(errorData.error || "Failed to delete person");
       }
 
-      setPersons((prev) => prev.filter((person) => person.id !== personId));
+      // Refresh the current page
+      await fetchPersons(currentPage);
     } catch (err: any) {
       console.error("Error deleting person:", err);
       setError(`Failed to delete ${personName}: ${err.message}`);
@@ -74,6 +115,118 @@ export default function PersonListPage() {
         return newSet;
       });
     }
+  };
+
+  const renderPaginationControls = () => {
+    if (!pagination || pagination.totalPages <= 1) return null;
+
+    const { currentPage, totalPages, hasNextPage, hasPrevPage } = pagination;
+    const pageNumbers = [];
+
+    // Calculate which page numbers to show
+    const maxVisiblePages = 3;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+
+    // Adjust start page if we're near the end
+    if (endPage - startPage < maxVisiblePages - 1) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      pageNumbers.push(i);
+    }
+
+    return (
+      <div className="flex flex-col items-center justify-center mt-6 px-4 py-3 bg-white/50 rounded-xl">
+        <div className="text-sm text-slate-600 mb-4">
+          <span>
+            Showing{" "}
+            <span className="font-medium">
+              {Math.min(
+                (currentPage - 1) * itemsPerPage + 1,
+                pagination.totalItems
+              )}
+              -{Math.min(currentPage * itemsPerPage, pagination.totalItems)}
+            </span>{" "}
+            of <span className="font-medium">{pagination.totalItems}</span>{" "}
+            results
+          </span>
+        </div>
+
+        <nav className="flex items-center space-x-2">
+          <button
+            onClick={() => handlePageChange(currentPage - 1)}
+            disabled={!hasPrevPage}
+            className={`flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+              hasPrevPage
+                ? "text-slate-700 bg-white hover:bg-slate-50 border border-slate-300"
+                : "text-slate-400 bg-slate-100 cursor-not-allowed"
+            }`}
+          >
+            <ChevronLeft className="w-4 h-4 mr-1" />
+            Previous
+          </button>
+
+          <div className="flex items-center space-x-1">
+            {startPage > 1 && (
+              <>
+                <button
+                  onClick={() => handlePageChange(1)}
+                  className="px-3 py-2 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition-colors"
+                >
+                  1
+                </button>
+                {startPage > 2 && (
+                  <span className="px-2 text-slate-400">...</span>
+                )}
+              </>
+            )}
+
+            {pageNumbers.map((pageNumber) => (
+              <button
+                key={pageNumber}
+                onClick={() => handlePageChange(pageNumber)}
+                className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  pageNumber === currentPage
+                    ? "text-white bg-gradient-to-r from-blue-500 to-green-500"
+                    : "text-slate-700 bg-white hover:bg-slate-50 border border-slate-300"
+                }`}
+              >
+                {pageNumber}
+              </button>
+            ))}
+
+            {endPage < totalPages && (
+              <>
+                {endPage < totalPages - 1 && (
+                  <span className="px-2 text-slate-400">...</span>
+                )}
+                <button
+                  onClick={() => handlePageChange(totalPages)}
+                  className="px-3 py-2 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition-colors"
+                >
+                  {totalPages}
+                </button>
+              </>
+            )}
+          </div>
+
+          <button
+            onClick={() => handlePageChange(currentPage + 1)}
+            disabled={!hasNextPage}
+            className={`flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+              hasNextPage
+                ? "text-slate-700 bg-white hover:bg-slate-50 border border-slate-300"
+                : "text-slate-400 bg-slate-100 cursor-not-allowed"
+            }`}
+          >
+            Next
+            <ChevronRight className="w-4 h-4 ml-1" />
+          </button>
+        </nav>
+      </div>
+    );
   };
 
   if (isLoading) {
@@ -145,6 +298,11 @@ export default function PersonListPage() {
                     </h2>
                     <p className="text-slate-600 text-sm mt-1">
                       Manage your registered individuals for face recognition
+                      {pagination && (
+                        <span className="ml-2 font-medium">
+                          ({pagination.totalItems} total)
+                        </span>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -175,30 +333,27 @@ export default function PersonListPage() {
               <div className="text-center py-12">
                 <User className="w-16 h-16 text-slate-400 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-slate-700 mb-2">
-                  No persons registered yet
+                  {pagination?.totalItems === 0
+                    ? "No persons registered yet"
+                    : "No persons found on this page"}
                 </h3>
                 <p className="text-slate-500 mb-6">
-                  Start by adding your first person to enable face recognition.
+                  {pagination?.totalItems === 0
+                    ? "Start by adding your first person to enable face recognition."
+                    : "Try going to a different page or adding a new person."}
                 </p>
                 <Link
                   href="/person/new"
                   className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white rounded-xl shadow-md hover:shadow-lg transition-all duration-200 font-medium"
                 >
                   <Plus className="w-5 h-5 mr-2" />
-                  Add Your First Person
+                  {pagination?.totalItems === 0
+                    ? "Add Your First Person"
+                    : "Add New Person"}
                 </Link>
               </div>
             ) : (
               <>
-                <div className="mb-6 text-center">
-                  <p className="text-slate-600">
-                    <span className="font-semibold text-blue-600">
-                      {persons.length}
-                    </span>{" "}
-                    {persons.length === 1 ? "person" : "persons"} registered
-                  </p>
-                </div>
-                
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                   {persons.map((person) => (
                     <div
@@ -219,7 +374,7 @@ export default function PersonListPage() {
                           <User className="w-16 h-16 text-slate-400" />
                         </div>
                       )}
-                      
+
                       <div className="p-4">
                         <h3 className="text-lg font-semibold text-slate-800 mb-1">
                           {person.name}
@@ -230,7 +385,7 @@ export default function PersonListPage() {
                         <p className="text-slate-600 text-sm line-clamp-2 mb-4">
                           {person.description}
                         </p>
-                        
+
                         <div className="flex gap-2">
                           <Link
                             href={`/person/${person.id}/edit`}
@@ -249,13 +404,16 @@ export default function PersonListPage() {
                             }`}
                           >
                             <Trash2 className="w-4 h-4 mr-1" />
-                            {deletingIds.has(person.id) ? "Deleting..." : "Delete"}
+                            {deletingIds.has(person.id)
+                              ? "Deleting..."
+                              : "Delete"}
                           </button>
                         </div>
                       </div>
                     </div>
                   ))}
                 </div>
+                {renderPaginationControls()}
               </>
             )}
           </div>

@@ -14,13 +14,27 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Extract pagination parameters from URL
+    const { searchParams } = new URL(request.url);
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
+    const limit = Math.max(1, Math.min(50, parseInt(searchParams.get("limit") || "10")));
+    const skip = (page - 1) * limit;
+
+    // Get total count for pagination metadata
+    const totalCount = await prisma.person.count({
+      where: { userId: authenticatedUser.id },
+    });
+
+    // Get paginated persons
     const persons = await prisma.person.findMany({
       where: { userId: authenticatedUser.id },
       orderBy: { createdAt: "desc" },
+      skip,
+      take: limit,
     });
 
     const enrichedPersons = await Promise.all(
-      persons.map(async (person: { imageUrl: string; }) => ({
+      persons.map(async (person: { imageUrl: string }) => ({
         ...person,
         presignedImageUrl: person.imageUrl
           ? await getS3PresignedUrl(person.imageUrl)
@@ -28,7 +42,19 @@ export async function GET(request: NextRequest) {
       }))
     );
 
-    return NextResponse.json(enrichedPersons);
+    const totalPages = Math.ceil(totalCount / limit);
+
+    return NextResponse.json({
+      data: enrichedPersons,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalItems: totalCount,
+        itemsPerPage: limit,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+      },
+    });
   } catch (error) {
     console.error("Error fetching persons:", error);
     return NextResponse.json(
