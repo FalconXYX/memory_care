@@ -87,6 +87,7 @@ export async function POST(request: NextRequest) {
     // Connect to Gemini Live API
     const session = await client.live.connect({
       model: 'models/gemini-2.0-flash-live-001',
+      // model: 'models/gemini-live-2.5-flash-preview',
       config,
       callbacks
     });
