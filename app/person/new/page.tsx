@@ -36,7 +36,7 @@ export default function NewPersonPage() {
     formData.append("image", image);
 
     try {
-      const response = await fetch("/api/persons/upload", {
+      const response = await fetch("/api/persons", {
         method: "POST",
         body: formData,
       });
