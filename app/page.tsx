@@ -38,20 +38,16 @@ export default function Home() {
 
     const loadModels = async () => {
       try {
-        console.log('Loading Tiny Face Detector models...')
-        
         // Load required models for face detection and recognition
         await faceapi.nets.tinyFaceDetector.loadFromUri('/models')
         await faceapi.nets.faceLandmark68Net.loadFromUri('/models')
         await faceapi.nets.faceRecognitionNet.loadFromUri('/models')
         
-        console.log('All models loaded successfully')
         setModelsLoaded(true)
 
         // Load reference images for Thomas and Parth
         await loadReferenceImages()
       } catch (err) {
-        console.error('Error loading models:', err)
         setError('Failed to load face detection models. Please ensure all model files are in the /public/models directory.')
       }
     }
@@ -62,15 +58,11 @@ export default function Home() {
   // Load reference images and create face matcher
   const loadReferenceImages = async () => {
     try {
-      console.log('Loading reference images...')
-      
       const labeledDescriptors = []
       
       // Load Thomas's image
       try {
-        console.log('Attempting to load Thomas image...')
         const thomasImg = await faceapi.fetchImage('/onePersonFace.png')
-        console.log('Thomas image fetched, dimensions:', thomasImg.width, 'x', thomasImg.height)
         
         const thomasDetection = await faceapi
           .detectSingleFace(thomasImg, new faceapi.TinyFaceDetectorOptions({
@@ -81,26 +73,20 @@ export default function Home() {
           .withFaceDescriptor()
 
         if (thomasDetection) {
-          console.log('Thomas face detected with score:', thomasDetection.detection.score)
           labeledDescriptors.push(
             new faceapi.LabeledFaceDescriptors('Thomas', [thomasDetection.descriptor])
           )
           setReferencePeople(prev => prev.map(p => 
             p.name === 'Thomas' ? { ...p, loaded: true } : p
           ))
-          console.log('Thomas reference image loaded successfully')
         } else {
-          console.warn('No face detected in Thomas image (onePersonFace.png)')
         }
       } catch (err) {
-        console.error('Error loading Thomas image:', err)
       }
 
       // Load Parth's image
       try {
-        console.log('Attempting to load Parth image...')
         const parthImg = await faceapi.fetchImage('/onePersonFace2.png')
-        console.log('Parth image fetched, dimensions:', parthImg.width, 'x', parthImg.height)
         
         const parthDetection = await faceapi
           .detectSingleFace(parthImg, new faceapi.TinyFaceDetectorOptions({
@@ -111,17 +97,13 @@ export default function Home() {
           .withFaceDescriptor()
 
         if (parthDetection) {
-          console.log('Parth face detected with score:', parthDetection.detection.score)
           labeledDescriptors.push(
             new faceapi.LabeledFaceDescriptors('Parth', [parthDetection.descriptor])
           )
           setReferencePeople(prev => prev.map(p => 
             p.name === 'Parth' ? { ...p, loaded: true } : p
           ))
-          console.log('Parth reference image loaded successfully')
         } else {
-          console.warn('No face detected in Parth image (onePersonFace2.png)')
-          console.log('Trying with different detection settings...')
           
           // Try with more permissive settings
           const retryDetection = await faceapi
@@ -133,20 +115,16 @@ export default function Home() {
             .withFaceDescriptor()
             
           if (retryDetection) {
-            console.log('Parth face detected on retry with score:', retryDetection.detection.score)
             labeledDescriptors.push(
               new faceapi.LabeledFaceDescriptors('Parth', [retryDetection.descriptor])
             )
             setReferencePeople(prev => prev.map(p => 
               p.name === 'Parth' ? { ...p, loaded: true } : p
             ))
-            console.log('Parth reference image loaded successfully (retry)')
           } else {
-            console.error('Still no face detected in Parth image after retry')
           }
         }
       } catch (err) {
-        console.error('Error loading Parth image:', err)
       }
 
       // Create face matcher if we have at least one reference
@@ -154,12 +132,10 @@ export default function Home() {
         const matcher = new faceapi.FaceMatcher(labeledDescriptors, 0.6)
         setFaceMatcher(matcher)
         setReferenceImageLoaded(true)
-        console.log(`Face matcher created with ${labeledDescriptors.length} reference faces`)
       } else {
         setError('No reference faces could be loaded. Please check onePersonFace.png and onePersonFace2.png in /public directory.')
       }
     } catch (err) {
-      console.error('Error loading reference images:', err)
       setError('Failed to load reference images. Please ensure images are in the /public directory.')
     }
   }
@@ -176,7 +152,6 @@ export default function Home() {
         setIsWebcamStarted(true)
       }
     } catch (err) {
-      console.error('Error accessing webcam:', err)
       setError('Failed to access webcam. Please allow camera permissions.')
     }
   }
@@ -229,9 +204,7 @@ export default function Home() {
       setMode('recognition')
       setError('')
       
-      console.log(`Successfully registered: ${newFace.name}`)
     } catch (err) {
-      console.error('Error registering face:', err)
       setError('Failed to register face. Please try again.')
     } finally {
       setIsRegistering(false)
