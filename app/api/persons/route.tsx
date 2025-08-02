@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getS3PresignedUrl } from "@/lib/supabase/s3";
 import { getAuthenticatedUser } from "@/lib/auth";
-import { uploadFileToS3 } from "@/lib/supabase/s3";
-import prisma from "@/lib/prisma"; // Replaces direct PrismaClient usage
+import {
+  uploadFileToS3,
+  getS3PresignedUrl,
+} from "@/lib/supabase/s3";
+import prisma from "@/lib/prisma";
 
+// GET /api/persons
 export async function GET(request: NextRequest) {
   try {
     const authenticatedUser = await getAuthenticatedUser();
@@ -16,20 +19,16 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: "desc" },
     });
 
-    const personsWithPresignedUrls = await Promise.all(
-      persons.map(async (person) => {
-        const presignedImageUrl = person.imageUrl
+    const enrichedPersons = await Promise.all(
+      persons.map(async (person: { imageUrl: string; }) => ({
+        ...person,
+        presignedImageUrl: person.imageUrl
           ? await getS3PresignedUrl(person.imageUrl)
-          : null;
-
-        return {
-          ...person,
-          presignedImageUrl,
-        };
-      })
+          : null,
+      }))
     );
 
-    return NextResponse.json(personsWithPresignedUrls);
+    return NextResponse.json(enrichedPersons);
   } catch (error) {
     console.error("Error fetching persons:", error);
     return NextResponse.json(
@@ -42,7 +41,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-
+// POST /api/persons
 export async function POST(request: NextRequest) {
   try {
     const authenticatedUser = await getAuthenticatedUser();
@@ -63,7 +62,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Upload image to S3
+    // Upload the image to S3
     const buffer = Buffer.from(await imageFile.arrayBuffer());
     const { key } = await uploadFileToS3(
       buffer,
@@ -71,7 +70,7 @@ export async function POST(request: NextRequest) {
       imageFile.type
     );
 
-    // Ensure user record exists to satisfy foreign key
+    // Ensure the User record exists (for foreign key constraint)
     await prisma.user.upsert({
       where: { id: authenticatedUser.id },
       update: {},
@@ -81,7 +80,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const person = await prisma.person.create({
+    const newPerson = await prisma.person.create({
       data: {
         name,
         description,
@@ -91,11 +90,11 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const presignedImageUrl = await getS3PresignedUrl(person.imageUrl);
+    const presignedImageUrl = await getS3PresignedUrl(newPerson.imageUrl);
 
     return NextResponse.json(
       {
-        ...person,
+        ...newPerson,
         presignedImageUrl,
       },
       { status: 201 }
@@ -103,7 +102,10 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Error creating person:", error);
     return NextResponse.json(
-      { error: "Internal server error", details: (error as Error).message },
+      {
+        error: "Internal server error",
+        details: (error as Error).message,
+      },
       { status: 500 }
     );
   }

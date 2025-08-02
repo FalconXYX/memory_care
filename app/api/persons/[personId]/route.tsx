@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth";
 import {
   getS3PresignedUrl,
@@ -7,10 +7,10 @@ import {
 } from "@/lib/supabase/s3";
 import prisma from "@/lib/prisma"; // Shared Prisma instance
 
-// GET handler to fetch a person's details
+// GET /api/persons/[personId]
 export async function GET(
-  request: Request,
-  { params }: { params: { personId: string } }
+  request: NextRequest,
+  context: { params: { personId: string } }
 ) {
   try {
     const authenticatedUser = await getAuthenticatedUser();
@@ -18,7 +18,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { personId } = params;
+    const { personId } = context.params;
 
     const person = await prisma.person.findUnique({
       where: { id: personId, userId: authenticatedUser.id },
@@ -45,10 +45,10 @@ export async function GET(
   }
 }
 
-// PUT handler to update person details with optional image
+// PUT /api/persons/[personId]
 export async function PUT(
-  request: Request,
-  { params }: { params: { personId: string } }
+  request: NextRequest,
+  context: { params: { personId: string } }
 ) {
   try {
     const authenticatedUser = await getAuthenticatedUser();
@@ -56,7 +56,7 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { personId } = params;
+    const { personId } = context.params;
 
     // Ensure the user record exists to avoid FK issues
     await prisma.user.upsert({
@@ -124,10 +124,10 @@ export async function PUT(
   }
 }
 
-// DELETE handler to remove a person and their image
+// DELETE /api/persons/[personId]
 export async function DELETE(
-  request: Request,
-  { params }: { params: { personId: string } }
+  request: NextRequest,
+  context: { params: { personId: string } }
 ) {
   try {
     const authenticatedUser = await getAuthenticatedUser();
@@ -135,7 +135,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { personId } = params;
+    const { personId } = context.params;
 
     const existingPerson = await prisma.person.findUnique({
       where: { id: personId, userId: authenticatedUser.id },
