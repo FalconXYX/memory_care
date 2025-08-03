@@ -234,7 +234,7 @@ export default function PersonListPage() {
                         <div className="flex gap-2">
                           <Link
                             href={`/person/${person.id}/edit`}
-                            className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white rounded-xl shadow-md hover:shadow-lg transition-all duration-200 text-sm font-medium"
+                            className="flex-1 inline-flex items-center justify-center px-4 py-2 bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white rounded-xl shadow-md hover:shadow-lg transition-all duration-200 text-sm font-medium"
                           >
                             <Edit className="w-4 h-4 mr-1" />
                             Edit
@@ -242,7 +242,7 @@ export default function PersonListPage() {
                           <button
                             onClick={() => handleDelete(person.id, person.name)}
                             disabled={deletingIds.has(person.id)}
-                            className={`flex-1 inline-flex items-center justify-center px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200 ${
+                            className={`flex-1 inline-flex items-center justify-center px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 shadow-md hover:shadow-lg ${
                               deletingIds.has(person.id)
                                 ? "bg-gray-400 text-gray-700 cursor-not-allowed"
                                 : "bg-red-500 hover:bg-red-600 text-white"
