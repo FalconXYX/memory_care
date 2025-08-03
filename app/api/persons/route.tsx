@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth";
-import {
-  uploadFileToS3,
-  getS3PresignedUrl,
-} from "@/lib/supabase/s3";
+import { uploadFileToS3, getS3PresignedUrl } from "@/lib/supabase/s3";
 import prisma from "@/lib/prisma";
 
 // GET /api/persons
@@ -20,7 +17,7 @@ export async function GET(request: NextRequest) {
     });
 
     const enrichedPersons = await Promise.all(
-      persons.map(async (person: { imageUrl: string; }) => ({
+      persons.map(async (person: { imageUrl: string }) => ({
         ...person,
         presignedImageUrl: person.imageUrl
           ? await getS3PresignedUrl(person.imageUrl)

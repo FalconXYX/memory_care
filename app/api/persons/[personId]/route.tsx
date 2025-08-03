@@ -22,6 +22,15 @@ export async function GET(
 
     const person = await prisma.person.findUnique({
       where: { id: personId, userId: authenticatedUser.id },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        relationship: true,
+        imageUrl: true,
+        lastSeen: true,
+        userId: true,
+      },
     });
 
     if (!person) {
@@ -40,6 +49,45 @@ export async function GET(
     console.error("Error fetching person:", error);
     return NextResponse.json(
       { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+// PATCH /api/persons/[personId]
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ personId: string }> }
+) {
+  try {
+    const authenticatedUser = await getAuthenticatedUser();
+    if (!authenticatedUser) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { personId } = await context.params;
+
+    const existingPerson = await prisma.person.findUnique({
+      where: { id: personId, userId: authenticatedUser.id },
+    });
+
+    if (!existingPerson) {
+      return NextResponse.json({ error: "Person not found" }, { status: 404 });
+    }
+
+    const updatedPerson = await prisma.person.update({
+      where: { id: personId },
+      data: {
+        lastSeen: new Date(),
+      },
+      select: { id: true, lastSeen: true },
+    });
+
+    return NextResponse.json(updatedPerson);
+  } catch (error) {
+    console.error("Error updating lastSeen:", error);
+    return NextResponse.json(
+      { error: "Internal server error", details: (error as Error).message },
       { status: 500 }
     );
   }
