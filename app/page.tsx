@@ -426,10 +426,10 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
             };
 
             // Draw bounding box
-            // Compute drawing X coordinate to account for mirrored video
+            // Compute drawing X coordinate to account for mirrored video (only when mirrored)
             let drawX = box.x;
-            if (facingMode === 'user') {
-              // Mirror horizontally: flip x coordinate
+            if (facingMode === 'user' && isFullscreen) {
+              // Mirror horizontally: flip x coordinate when in fullscreen mirrored view
               drawX = canvas.width - box.x - box.width;
             }
             ctx.strokeStyle = textColor;
