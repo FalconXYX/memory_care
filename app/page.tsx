@@ -28,29 +28,35 @@ export default function Home() {
     }>
   >([]);
   const [facesLoaded, setFacesLoaded] = useState(false);
-  const [debugMode, setDebugMode] = useState(false)
+  const [debugMode, setDebugMode] = useState(false);
   const [isAssistantEnabled, setIsAssistantEnabled] = useState(false);
-  const [assistantStatus, setAssistantStatus] = useState<string>('');
+  const [assistantStatus, setAssistantStatus] = useState<string>("");
   const [isAssistantSpeaking, setIsAssistantSpeaking] = useState(false);
   const [lastApiCall, setLastApiCall] = useState<number>(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   // Track last time any speech finished for global cooldown
   const [lastSpeechTime, setLastSpeechTime] = useState<number>(0);
-  
+
   // Camera flip functionality
-  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
-  const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([]);
-  
+  const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
+  const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>(
+    []
+  );
+
   // Hashmap to track last voice play time for each person
-  const [personCooldowns, setPersonCooldowns] = useState<Map<string, number>>(new Map());
-  
+  const [personCooldowns, setPersonCooldowns] = useState<Map<string, number>>(
+    new Map()
+  );
+
   // Track currently detected persons with their positions for overlay buttons
-  const [detectedPersons, setDetectedPersons] = useState<Array<{
-    person: any;
-    box: { x: number; y: number; width: number; height: number };
-    textColor: string;
-  }>>([]);
-  
+  const [detectedPersons, setDetectedPersons] = useState<
+    Array<{
+      person: any;
+      box: { x: number; y: number; width: number; height: number };
+      textColor: string;
+    }>
+  >([]);
+
   // Cooldown configuration in minutes
   const PERSON_COOLDOWN_MINUTES = 5;
   const API_CALL_DEBOUNCE_MS = 2000; // 2 seconds between API calls
@@ -59,11 +65,11 @@ export default function Home() {
 
   // Store the interval ref so we can clear it when needed
   const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   // Audio streaming refs
   const audioStreamerRef = useRef<AudioStreamer | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  
+
   // Track detected persons to prevent API spam
   const detectedPersonsRef = useRef<Set<string>>(new Set());
   const lastDetectionTimeRef = useRef<number>(0);
@@ -90,21 +96,36 @@ export default function Home() {
       setIsFullscreen(!!document.fullscreenElement);
     };
 
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
     };
   }, []);
+
+  const triggerHapticFeedback = (personName: string) => {
+    if ("vibrate" in navigator) {
+      if (!isPersonInCooldown(personName)) {
+        // Pattern: short-long-short (recognized person pattern)
+        navigator.vibrate([200, 100, 400, 100, 200]);
+        setPersonCooldowns((prev) => new Map(prev.set(personName, Date.now())));
+        console.log(`Haptic feedback triggered for ${personName}`);
+      } else {
+        console.log(`Haptic feedback for ${personName} is in cooldown`);
+      }
+    }
+  };
 
   // Enumerate available cameras
   const getAvailableCameras = async () => {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter(device => device.kind === 'videoinput');
+      const videoDevices = devices.filter(
+        (device) => device.kind === "videoinput"
+      );
       setAvailableCameras(videoDevices);
       return videoDevices;
     } catch (error) {
-      console.error('Error getting available cameras:', error);
+      console.error("Error getting available cameras:", error);
       return [];
     }
   };
@@ -112,30 +133,30 @@ export default function Home() {
   // Switch camera function
   const flipCamera = async () => {
     if (!videoRef.current) return;
-    
+
     try {
       // Stop current stream
       const currentStream = videoRef.current.srcObject as MediaStream;
       if (currentStream) {
-        currentStream.getTracks().forEach(track => track.stop());
+        currentStream.getTracks().forEach((track) => track.stop());
       }
 
       // Toggle facing mode
-      const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
-      
+      const newFacingMode = facingMode === "user" ? "environment" : "user";
+
       // Get new stream with opposite camera
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          width: 720, 
+        video: {
+          width: 720,
           height: 560,
-          facingMode: newFacingMode
+          facingMode: newFacingMode,
         },
       });
 
       videoRef.current.srcObject = stream;
       setFacingMode(newFacingMode);
     } catch (error) {
-      console.error('Error flipping camera:', error);
+      console.error("Error flipping camera:", error);
       setError("Failed to flip camera. This device may only have one camera.");
     }
   };
@@ -144,30 +165,36 @@ export default function Home() {
   const isPersonInCooldown = (personName: string): boolean => {
     const lastPlayTime = personCooldowns.get(personName);
     if (!lastPlayTime) return false;
-    
+
     const cooldownMs = PERSON_COOLDOWN_MINUTES * 60 * 1000;
-    const isInCooldown = (Date.now() - lastPlayTime) < cooldownMs;
-    
+    const isInCooldown = Date.now() - lastPlayTime < cooldownMs;
+
     if (isInCooldown) {
       const timeLeft = cooldownMs - (Date.now() - lastPlayTime);
-      console.log(`${personName} is in cooldown for ${Math.ceil(timeLeft / (60 * 1000))} more minutes`);
+      console.log(
+        `${personName} is in cooldown for ${Math.ceil(
+          timeLeft / (60 * 1000)
+        )} more minutes`
+      );
     }
-    
+
     return isInCooldown;
   };
 
   // Initialize audio context and streamer
   useEffect(() => {
     if (!audioStreamerRef.current) {
-      audioContext({ id: "memory-care-audio" }).then((audioCtx: AudioContext) => {
-        audioContextRef.current = audioCtx;
-        audioStreamerRef.current = new AudioStreamer(audioCtx);
-        audioStreamerRef.current.onComplete = () => {
-          setIsAssistantSpeaking(false);
-          setAssistantStatus('');
-          setLastSpeechTime(Date.now());
-        };
-      });
+      audioContext({ id: "memory-care-audio" }).then(
+        (audioCtx: AudioContext) => {
+          audioContextRef.current = audioCtx;
+          audioStreamerRef.current = new AudioStreamer(audioCtx);
+          audioStreamerRef.current.onComplete = () => {
+            setIsAssistantSpeaking(false);
+            setAssistantStatus("");
+            setLastSpeechTime(Date.now());
+          };
+        }
+      );
     }
   }, []);
 
@@ -178,50 +205,57 @@ export default function Home() {
 
   // Simple function to call Gemini Live API for person description
   const generatePersonDescription = async (person: any, forcePlay = false) => {
-    console.log(`Attempting to describe ${person.name}, forcePlay: ${forcePlay}, isAssistantEnabled: ${isAssistantEnabled}, isAssistantSpeaking: ${isAssistantSpeaking}`);
-    
+    console.log(
+      `Attempting to describe ${person.name}, forcePlay: ${forcePlay}, isAssistantEnabled: ${isAssistantEnabled}, isAssistantSpeaking: ${isAssistantSpeaking}`
+    );
+
     // Global cooldown between speeches
-    if (!forcePlay && (Date.now() - lastSpeechTime) < GLOBAL_COOLDOWN_MS) {
-      console.log('Global cooldown active, skipping');
+    if (!forcePlay && Date.now() - lastSpeechTime < GLOBAL_COOLDOWN_MS) {
+      console.log("Global cooldown active, skipping");
       return;
     }
 
     // Don't play if assistant is disabled (unless force play)
     if (!isAssistantEnabled && !forcePlay) {
-      console.log('Assistant disabled, skipping');
+      console.log("Assistant disabled, skipping");
       return;
     }
-    
+
     // Don't play if already speaking (unless force play)
     if (isAssistantSpeaking && !forcePlay) {
-      console.log('Assistant already speaking, skipping');
+      console.log("Assistant already speaking, skipping");
       return;
     }
-    
+
     // Debounce API calls to prevent spam
-    if (!forcePlay && (Date.now() - lastApiCall) < API_CALL_DEBOUNCE_MS) {
-      console.log('API call too recent, skipping');
+    if (!forcePlay && Date.now() - lastApiCall < API_CALL_DEBOUNCE_MS) {
+      console.log("API call too recent, skipping");
       return;
     }
-    
+
     // Check cooldown for same person (unless force play)
     if (!forcePlay && isPersonInCooldown(person.name)) {
       const lastPlayTime = personCooldowns.get(person.name);
-      const timeLeft = PERSON_COOLDOWN_MINUTES * 60 * 1000 - (Date.now() - lastPlayTime!);
+      const timeLeft =
+        PERSON_COOLDOWN_MINUTES * 60 * 1000 - (Date.now() - lastPlayTime!);
       const minutesLeft = Math.ceil(timeLeft / (60 * 1000));
-      console.log(`${person.name} is in cooldown for ${minutesLeft} more minutes`);
-      setAssistantStatus(`⏳ ${person.name} on cooldown (${minutesLeft}m left)`);
-      setTimeout(() => setAssistantStatus(''), 3000);
+      console.log(
+        `${person.name} is in cooldown for ${minutesLeft} more minutes`
+      );
+      setAssistantStatus(
+        `⏳ ${person.name} on cooldown (${minutesLeft}m left)`
+      );
+      setTimeout(() => setAssistantStatus(""), 3000);
       return;
     }
 
     console.log(`Starting description for ${person.name}`);
     // Track this person to prevent repeat calls
-    setPersonCooldowns(prev => new Map(prev.set(person.name, Date.now())));
+    setPersonCooldowns((prev) => new Map(prev.set(person.name, Date.now())));
     setLastApiCall(Date.now());
     setIsAssistantSpeaking(true);
     setAssistantStatus(`🎤 Describing ${person.name}...`);
-    
+
     try {
       // Only stop currently playing audio if this is a forced/manual play
       if (forcePlay && audioStreamerRef.current) {
@@ -248,25 +282,27 @@ You should act like a helpful assistant, providing context without needing to be
 
 Here's the person I see: This is ${person.name}, who is your ${person.relationship}. Description: ${person.description}`;
 
-      const response = await fetch('/api/gemini-tts', {
-        method: 'POST',
+      const response = await fetch("/api/gemini-tts", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ text: prompt }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
         throw new Error(`API Error: ${errorData.error || response.statusText}`);
       }
 
-      const contentType = response.headers.get('Content-Type');
-      
-      if (contentType?.includes('audio/pcm')) {
+      const contentType = response.headers.get("Content-Type");
+
+      if (contentType?.includes("audio/pcm")) {
         const pcmArrayBuffer = await response.arrayBuffer();
         setAssistantStatus(`🎵 Playing description for ${person.name}`);
-        
+
         // Use the audio streamer for proper playback
         if (audioStreamerRef.current && audioContextRef.current) {
           await audioStreamerRef.current.resume();
@@ -274,15 +310,16 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
           const pcmData = new Uint8Array(pcmArrayBuffer);
           audioStreamerRef.current.addPCM16(pcmData);
         } else {
-          throw new Error('Audio system not initialized');
+          throw new Error("Audio system not initialized");
         }
       }
-
     } catch (error) {
-      console.error('Assistant error:', error);
+      console.error("Assistant error:", error);
       setIsAssistantSpeaking(false);
-      setAssistantStatus(`❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setTimeout(() => setAssistantStatus(''), 5000);
+      setAssistantStatus(
+        `❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+      setTimeout(() => setAssistantStatus(""), 5000);
     }
   }; // end generatePersonDescription
 
@@ -301,7 +338,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
 
       // Check if video has valid dimensions
       if (video.videoWidth === 0 || video.videoHeight === 0) {
-        console.log('Video dimensions not ready yet');
+        console.log("Video dimensions not ready yet");
         return;
       }
 
@@ -322,10 +359,16 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
       }
 
       // Use video's actual dimensions instead of element dimensions
-      const displaySize = { width: video.videoWidth, height: video.videoHeight };
-      
+      const displaySize = {
+        width: video.videoWidth,
+        height: video.videoHeight,
+      };
+
       // Ensure canvas matches video dimensions
-      if (canvas.width !== displaySize.width || canvas.height !== displaySize.height) {
+      if (
+        canvas.width !== displaySize.width ||
+        canvas.height !== displaySize.height
+      ) {
         canvas.width = displaySize.width;
         canvas.height = displaySize.height;
         faceapi.matchDimensions(canvas, displaySize);
@@ -348,7 +391,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
           let personInfo = {
             name: `Unknown (${(1 - distance).toFixed(2)})`,
             relationship: "",
-            description: ""
+            description: "",
           };
           let textColor = "#ff0000"; // Red for unknown
           let fullPersonData = null;
@@ -359,38 +402,56 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
               personInfo = {
                 name: person.name,
                 relationship: person.relationship,
-                description: person.description
+                description: person.description,
               };
               textColor = "#00ff00"; // Green for known
               fullPersonData = person;
-              
+
               // Add to detected persons for overlay buttons (only known persons)
               currentDetectedPersons.push({
                 person: person,
                 box: detection.detection.box,
-                textColor: textColor
+                textColor: textColor,
               });
-              
+
               // Call Gemini Live assistant to describe the person (only if conditions are met)
               // Add additional check to prevent repeated calls for the same person
               const currentTime = Date.now();
-              const shouldTrigger = isAssistantEnabled && 
-                                  !isAssistantSpeaking && 
-                                  !isPersonInCooldown(person.name) &&
-                                  !detectedPersonsRef.current.has(person.name) &&
-                                  (currentTime - lastDetectionTimeRef.current) > 1000; // 1 second minimum between any detections
-              
+              const shouldTrigger =
+                isAssistantEnabled &&
+                !isAssistantSpeaking &&
+                !isPersonInCooldown(person.name) &&
+                !detectedPersonsRef.current.has(person.name) &&
+                currentTime - lastDetectionTimeRef.current > 1000; // 1 second minimum between any detections
+
               // Debug logging for auto-trigger decisions
               if (isAssistantEnabled && !shouldTrigger) {
-                console.log(`Auto-trigger blocked for ${person.name}: speaking=${isAssistantSpeaking}, cooldown=${isPersonInCooldown(person.name)}, detected=${detectedPersonsRef.current.has(person.name)}`);
+                console.log(
+                  `Auto-trigger blocked for ${
+                    person.name
+                  }: speaking=${isAssistantSpeaking}, cooldown=${isPersonInCooldown(
+                    person.name
+                  )}, detected=${detectedPersonsRef.current.has(person.name)}`
+                );
               }
-              
+
+              // Check for haptic feedback (independent of voice assistant)
+              const shouldTriggerHaptic =
+                !isPersonInCooldown(person.name) &&
+                !detectedPersonsRef.current.has(person.name) &&
+                currentTime - lastDetectionTimeRef.current > 1000;
+
+              if (shouldTriggerHaptic) {
+                // Trigger haptic feedback first (independent of voice assistant)
+                triggerHapticFeedback(person.name);
+              }
+
               if (shouldTrigger) {
                 console.log(`Auto-triggering voice for ${person.name}`);
                 detectedPersonsRef.current.add(person.name);
                 lastDetectionTimeRef.current = currentTime;
                 generatePersonDescription(person);
-                
+
                 // Clear the detection flag after a delay to allow re-detection later
                 setTimeout(() => {
                   detectedPersonsRef.current.delete(person.name);
@@ -406,18 +467,25 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
             const drawContextInfo = (x: number, y: number, lines: string[]) => {
               const lineHeight = 22;
               const padding = 8;
-              const maxWidth = Math.max(...lines.map(line => ctx.measureText(line).width));
-              
+              const maxWidth = Math.max(
+                ...lines.map((line) => ctx.measureText(line).width)
+              );
+
               // Draw background rectangle
               ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-              ctx.fillRect(x - padding, y - padding, maxWidth + padding * 2, lines.length * lineHeight + padding);
-              
+              ctx.fillRect(
+                x - padding,
+                y - padding,
+                maxWidth + padding * 2,
+                lines.length * lineHeight + padding
+              );
+
               // Draw text lines
               ctx.fillStyle = textColor;
               ctx.font = "16px Arial";
               ctx.strokeStyle = "black";
               ctx.lineWidth = 2;
-              
+
               lines.forEach((line, index) => {
                 const lineY = y + index * lineHeight;
                 ctx.strokeText(line, x, lineY);
@@ -428,7 +496,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
             // Draw bounding box
             // Compute drawing X coordinate to account for mirrored video
             let drawX = box.x;
-            if (facingMode === 'user') {
+            if (facingMode === "user") {
               // Mirror horizontally: flip x coordinate
               drawX = canvas.width - box.x - box.width;
             }
@@ -439,9 +507,11 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
             // Draw context info (without description)
             const lines = [
               `👤 ${personInfo.name}`,
-              ...(personInfo.relationship ? [`💝 ${personInfo.relationship}`] : [])
+              ...(personInfo.relationship
+                ? [`💝 ${personInfo.relationship}`]
+                : []),
             ];
-            
+
             // Draw context info at adjusted X
             drawContextInfo(drawX, box.y - 10, lines);
           }
@@ -571,12 +641,12 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
     try {
       // Get available cameras first
       await getAvailableCameras();
-      
+
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          width: 720, 
+        video: {
+          width: 720,
           height: 560,
-          facingMode: facingMode
+          facingMode: facingMode,
         },
       });
 
@@ -600,7 +670,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
 
     // Wait for video to have valid dimensions
     if (video.videoWidth === 0 || video.videoHeight === 0) {
-      console.log('Video not ready, waiting...');
+      console.log("Video not ready, waiting...");
       setTimeout(handleVideoPlay, 100);
       return;
     }
@@ -631,8 +701,18 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
           <div className="bg-white/80 backdrop-blur-sm rounded-3xl p-8 shadow-2xl border border-blue-200/50">
             <div className="flex items-center justify-center mb-6">
               <div className="bg-gradient-to-r from-blue-500 to-green-500 p-4 rounded-2xl">
-                <svg className="w-12 h-12 text-white animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                <svg
+                  className="w-12 h-12 text-white animate-pulse"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                  />
                 </svg>
               </div>
             </div>
@@ -640,11 +720,19 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
             <h3 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent mb-2">
               Memory Care AI
             </h3>
-            <p className="text-slate-600 text-lg">Initializing your personalized assistant...</p>
+            <p className="text-slate-600 text-lg">
+              Initializing your personalized assistant...
+            </p>
             <div className="mt-4 flex justify-center space-x-1">
               <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+              <div
+                className="w-2 h-2 bg-green-500 rounded-full animate-bounce"
+                style={{ animationDelay: "0.1s" }}
+              ></div>
+              <div
+                className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
+                style={{ animationDelay: "0.2s" }}
+              ></div>
             </div>
           </div>
         </div>
@@ -653,7 +741,13 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
   }
 
   return (
-    <div className={`min-h-screen ${isFullscreen ? 'bg-black' : 'bg-gradient-to-br from-blue-50 via-white to-green-50'}`}>
+    <div
+      className={`min-h-screen ${
+        isFullscreen
+          ? "bg-black"
+          : "bg-gradient-to-br from-blue-50 via-white to-green-50"
+      }`}
+    >
       {!isFullscreen && (
         <nav className="bg-white/80 backdrop-blur-sm shadow-sm border-b border-blue-100">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -705,9 +799,17 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
         </nav>
       )}
 
-      <main className={`${isFullscreen ? 'h-screen' : 'max-w-7xl mx-auto py-6 sm:px-6 lg:px-8'}`}>
+      <main
+        className={`${
+          isFullscreen ? "h-screen" : "max-w-7xl mx-auto py-6 sm:px-6 lg:px-8"
+        }`}
+      >
         {user ? (
-          <div className={`${isFullscreen ? 'h-full' : 'space-y-4 sm:space-y-6 px-4 sm:px-0'}`}>
+          <div
+            className={`${
+              isFullscreen ? "h-full" : "space-y-4 sm:space-y-6 px-4 sm:px-0"
+            }`}
+          >
             {!isFullscreen && (
               <>
                 {/* Welcome Section */}
@@ -717,8 +819,18 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                     <div className="flex items-center justify-between mb-6">
                       <div className="flex items-center space-x-4">
                         <div className="bg-gradient-to-r from-blue-500 to-green-500 p-3 rounded-2xl">
-                          <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                          <svg
+                            className="w-8 h-8 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                            />
                           </svg>
                         </div>
                         <div>
@@ -741,7 +853,9 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                     {/* Description */}
                     <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6 mb-6">
                       <p className="text-slate-700 text-base sm:text-lg leading-relaxed mb-4">
-                        🧠 <strong>Advanced AI Recognition:</strong> Our system helps identify and remember people in your life, providing instant context and background information.
+                        🧠 <strong>Advanced AI Recognition:</strong> Our system
+                        helps identify and remember people in your life,
+                        providing instant context and background information.
                       </p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-slate-600">
                         <div className="flex items-center space-x-2">
@@ -769,8 +883,18 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                         href="/person"
                         className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-6 py-4 rounded-2xl text-center font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-1 flex items-center justify-center space-x-2"
                       >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                          />
                         </svg>
                         <span>Manage People</span>
                       </Link>
@@ -778,8 +902,18 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                         href="/person/new"
                         className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-6 py-4 rounded-2xl text-center font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-1 flex items-center justify-center space-x-2"
                       >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                          />
                         </svg>
                         <span>Add New Person</span>
                       </Link>
@@ -790,15 +924,36 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
             )}
 
             {/* Face Detection Section */}
-            <div className={`${isFullscreen ? 'h-full flex flex-col' : 'bg-gradient-to-b from-slate-50 to-white rounded-3xl shadow-2xl p-6 border border-slate-200/50'}`}>
+            <div
+              className={`${
+                isFullscreen
+                  ? "h-full flex flex-col"
+                  : "bg-gradient-to-b from-slate-50 to-white rounded-3xl shadow-2xl p-6 border border-slate-200/50"
+              }`}
+            >
               {!isFullscreen && (
                 <>
                   <div className="text-center mb-8">
                     <div className="flex items-center justify-center mb-4">
                       <div className="bg-gradient-to-r from-blue-500 to-green-500 p-3 rounded-2xl mr-4">
-                        <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        <svg
+                          className="w-8 h-8 text-white"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                          />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                          />
                         </svg>
                       </div>
                       <div>
@@ -815,8 +970,18 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                   {error && (
                     <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-2xl mb-6 text-sm">
                       <div className="flex items-center">
-                        <svg className="w-5 h-5 text-red-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.35 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                        <svg
+                          className="w-5 h-5 text-red-500 mr-3"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.35 16.5c-.77.833.192 2.5 1.732 2.5z"
+                          />
                         </svg>
                         <span className="font-medium">{error}</span>
                       </div>
@@ -828,80 +993,151 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                     <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-lg border border-slate-200/50">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Models</p>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                            Models
+                          </p>
                           <p className="text-lg font-bold text-slate-800">
                             {modelsLoaded ? "Ready" : "Loading..."}
                           </p>
                         </div>
-                        <div className={`w-3 h-3 rounded-full ${modelsLoaded ? "bg-green-500" : "bg-yellow-500 animate-pulse"}`}></div>
+                        <div
+                          className={`w-3 h-3 rounded-full ${
+                            modelsLoaded
+                              ? "bg-green-500"
+                              : "bg-yellow-500 animate-pulse"
+                          }`}
+                        ></div>
                       </div>
                     </div>
 
                     <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-lg border border-slate-200/50">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Faces</p>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                            Faces
+                          </p>
                           <p className="text-lg font-bold text-slate-800">
-                            {facesLoaded ? `${dbPersons.length} Loaded` : "Loading..."}
+                            {facesLoaded
+                              ? `${dbPersons.length} Loaded`
+                              : "Loading..."}
                           </p>
                         </div>
-                        <div className={`w-3 h-3 rounded-full ${facesLoaded ? "bg-green-500" : "bg-yellow-500 animate-pulse"}`}></div>
+                        <div
+                          className={`w-3 h-3 rounded-full ${
+                            facesLoaded
+                              ? "bg-green-500"
+                              : "bg-yellow-500 animate-pulse"
+                          }`}
+                        ></div>
                       </div>
                     </div>
 
                     <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-lg border border-slate-200/50">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Camera</p>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                            Camera
+                          </p>
                           <p className="text-lg font-bold text-slate-800">
                             {isWebcamStarted ? "Active" : "Inactive"}
                           </p>
                         </div>
-                        <div className={`w-3 h-3 rounded-full ${isWebcamStarted ? "bg-green-500 animate-pulse" : "bg-gray-400"}`}></div>
+                        <div
+                          className={`w-3 h-3 rounded-full ${
+                            isWebcamStarted
+                              ? "bg-green-500 animate-pulse"
+                              : "bg-gray-400"
+                          }`}
+                        ></div>
                       </div>
                     </div>
 
                     <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-lg border border-slate-200/50">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Assistant</p>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                            Assistant
+                          </p>
                           <p className="text-lg font-bold text-slate-800">
-                            {isAssistantSpeaking ? 'Speaking' : isAssistantEnabled ? 'Active' : 'Inactive'}
+                            {isAssistantSpeaking
+                              ? "Speaking"
+                              : isAssistantEnabled
+                              ? "Active"
+                              : "Inactive"}
                           </p>
                         </div>
-                        <div className={`w-3 h-3 rounded-full ${
-                          isAssistantSpeaking ? 'bg-orange-500 animate-pulse' : 
-                          isAssistantEnabled ? 'bg-blue-500' : 'bg-gray-400'
-                        }`}></div>
+                        <div
+                          className={`w-3 h-3 rounded-full ${
+                            isAssistantSpeaking
+                              ? "bg-orange-500 animate-pulse"
+                              : isAssistantEnabled
+                              ? "bg-blue-500"
+                              : "bg-gray-400"
+                          }`}
+                        ></div>
                       </div>
                     </div>
                   </div>
-                  
+
                   {/* AI Assistant Toggle */}
                   <div className="mb-8 text-center">
                     <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6 inline-block shadow-lg border border-slate-200/50">
-                      <h4 className="text-lg font-semibold text-slate-700 mb-4">Voice Assistant Control</h4>
+                      <h4 className="text-lg font-semibold text-slate-700 mb-4">
+                        Voice Assistant Control
+                      </h4>
                       <button
-                        onClick={() => setIsAssistantEnabled(!isAssistantEnabled)}
+                        onClick={() =>
+                          setIsAssistantEnabled(!isAssistantEnabled)
+                        }
                         className={`px-8 py-4 rounded-2xl text-lg font-semibold transition-all duration-200 shadow-lg transform hover:scale-105 ${
                           isAssistantEnabled
-                            ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 shadow-blue-200'
-                            : 'bg-gradient-to-r from-gray-400 to-gray-500 text-white hover:from-gray-500 hover:to-gray-600'
+                            ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 shadow-blue-200"
+                            : "bg-gradient-to-r from-gray-400 to-gray-500 text-white hover:from-gray-500 hover:to-gray-600"
                         }`}
                       >
                         {isAssistantEnabled ? (
                           <span className="flex items-center space-x-2">
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 11.293c0 1.297-.908 2.35-2.026 2.35-1.119 0-2.026-1.053-2.026-2.35 0-1.297.907-2.35 2.026-2.35 1.118 0 2.026 1.053 2.026 2.35z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 15.657A8 8 0 016.343 4.343a8 8 0 0011.314 11.314z" />
+                            <svg
+                              className="w-6 h-6"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M15.536 11.293c0 1.297-.908 2.35-2.026 2.35-1.119 0-2.026-1.053-2.026-2.35 0-1.297.907-2.35 2.026-2.35 1.118 0 2.026 1.053 2.026 2.35z"
+                              />
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M17.657 15.657A8 8 0 016.343 4.343a8 8 0 0011.314 11.314z"
+                              />
                             </svg>
                             <span>Voice Assistant ON</span>
                           </span>
                         ) : (
                           <span className="flex items-center space-x-2">
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                            <svg
+                              className="w-6 h-6"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                              />
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"
+                              />
                             </svg>
                             <span>Voice Assistant OFF</span>
                           </span>
@@ -925,8 +1161,18 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                           onClick={startVideoAndFullscreen}
                           className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-bold py-4 px-8 rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-200 text-xl transform hover:-translate-y-1 flex items-center space-x-3 mx-auto"
                         >
-                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          <svg
+                            className="w-6 h-6"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                            />
                           </svg>
                           <span>Start Full Screen Camera</span>
                         </button>
@@ -937,8 +1183,18 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                             onClick={enterFullscreen}
                             className="bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white font-bold py-3 px-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg transform hover:-translate-y-1 flex items-center space-x-2"
                           >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                            <svg
+                              className="w-5 h-5"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
+                              />
                             </svg>
                             <span>Enter Full Screen</span>
                           </button>
@@ -946,10 +1202,22 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                             <button
                               onClick={flipCamera}
                               className="bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white font-bold py-3 px-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg transform hover:-translate-y-1 flex items-center space-x-2"
-                              title={`Switch to ${facingMode === 'user' ? 'back' : 'front'} camera`}
+                              title={`Switch to ${
+                                facingMode === "user" ? "back" : "front"
+                              } camera`}
                             >
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              <svg
+                                className="w-5 h-5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                                />
                               </svg>
                               <span>Flip Camera</span>
                             </button>
@@ -960,14 +1228,26 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                   )}
                 </>
               )}
-              
+
               {/* Camera Container */}
-              <div className={`relative ${isFullscreen ? 'flex justify-center items-center h-full' : 'flex justify-center'}`}>
+              <div
+                className={`relative ${
+                  isFullscreen
+                    ? "flex justify-center items-center h-full"
+                    : "flex justify-center"
+                }`}
+              >
                 <div className="relative">
                   {!isFullscreen && (
                     <div className="absolute -inset-4 bg-gradient-to-r from-blue-500/20 to-green-500/20 rounded-3xl blur-xl"></div>
                   )}
-                  <div className={`relative ${!isFullscreen ? 'bg-black rounded-2xl overflow-hidden shadow-2xl' : ''}`}>
+                  <div
+                    className={`relative ${
+                      !isFullscreen
+                        ? "bg-black rounded-2xl overflow-hidden shadow-2xl"
+                        : ""
+                    }`}
+                  >
                     <video
                       ref={videoRef}
                       width={isFullscreen ? "auto" : "720"}
@@ -975,54 +1255,101 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                       autoPlay
                       muted
                       onPlay={handleVideoPlay}
-                      className={`${isFullscreen ? 'max-h-full max-w-full' : 'rounded-2xl'} ${facingMode === 'user' && isFullscreen ? 'scale-x-[-1]' : ''}`}
-                      style={isFullscreen ? { height: '100vh', width: 'auto' } : {}}
+                      className={`${
+                        isFullscreen ? "max-h-full max-w-full" : "rounded-2xl"
+                      } ${
+                        facingMode === "user" && isFullscreen
+                          ? "scale-x-[-1]"
+                          : ""
+                      }`}
+                      style={
+                        isFullscreen ? { height: "100vh", width: "auto" } : {}
+                      }
                     />
                     <canvas
                       ref={canvasRef}
                       width="720"
                       height="560"
-                      className={`absolute top-0 left-0 ${isFullscreen ? '' : 'rounded-2xl'} ${facingMode === 'user' && isFullscreen ? 'scale-x-[-1]' : ''}`}
-                      style={isFullscreen ? { 
-                        height: '100vh', 
-                        width: 'auto',
-                        transform: `scale(${facingMode === 'user' ? '-1, 1' : '1, 1'})`,
-                        transformOrigin: 'center'
-                      } : {}}
+                      className={`absolute top-0 left-0 ${
+                        isFullscreen ? "" : "rounded-2xl"
+                      } ${
+                        facingMode === "user" && isFullscreen
+                          ? "scale-x-[-1]"
+                          : ""
+                      }`}
+                      style={
+                        isFullscreen
+                          ? {
+                              height: "100vh",
+                              width: "auto",
+                              transform: `scale(${
+                                facingMode === "user" ? "-1, 1" : "1, 1"
+                              })`,
+                              transformOrigin: "center",
+                            }
+                          : {}
+                      }
                     />
-                    
+
                     {/* Fullscreen UI Overlay */}
                     {isFullscreen && (
                       <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
                         {/* Voice Assistant Toggle - Top Left */}
                         <div className="absolute top-6 left-6 pointer-events-auto">
                           <button
-                            onClick={() => setIsAssistantEnabled(!isAssistantEnabled)}
+                            onClick={() =>
+                              setIsAssistantEnabled(!isAssistantEnabled)
+                            }
                             className={`px-6 py-3 rounded-2xl text-sm font-semibold transition-all duration-200 shadow-xl ${
                               isAssistantEnabled
-                                ? 'bg-blue-500/90 text-white hover:bg-blue-600/90 backdrop-blur-sm'
-                                : 'bg-white/90 text-slate-700 hover:bg-gray-100/90 backdrop-blur-sm'
+                                ? "bg-blue-500/90 text-white hover:bg-blue-600/90 backdrop-blur-sm"
+                                : "bg-white/90 text-slate-700 hover:bg-gray-100/90 backdrop-blur-sm"
                             }`}
                           >
                             {isAssistantEnabled ? (
                               <span className="flex items-center space-x-2">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 11.293c0 1.297-.908 2.35-2.026 2.35-1.119 0-2.026-1.053-2.026-2.35 0-1.297.907-2.35 2.026-2.35 1.118 0 2.026 1.053 2.026 2.35z" />
+                                <svg
+                                  className="w-5 h-5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M15.536 11.293c0 1.297-.908 2.35-2.026 2.35-1.119 0-2.026-1.053-2.026-2.35 0-1.297.907-2.35 2.026-2.35 1.118 0 2.026 1.053 2.026 2.35z"
+                                  />
                                 </svg>
                                 <span>Voice Assistant ON</span>
                               </span>
                             ) : (
                               <span className="flex items-center space-x-2">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                                <svg
+                                  className="w-5 h-5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                                  />
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"
+                                  />
                                 </svg>
                                 <span>Voice Assistant OFF</span>
                               </span>
                             )}
                           </button>
                         </div>
-                        
+
                         {/* Assistant Status - Top Center */}
                         {assistantStatus && (
                           <div className="absolute top-6 left-1/2 transform -translate-x-1/2 pointer-events-auto">
@@ -1031,7 +1358,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                             </span>
                           </div>
                         )}
-                        
+
                         {/* Exit Fullscreen Button - Top Right */}
                         <div className="absolute top-6 right-6 pointer-events-auto">
                           <button
@@ -1039,23 +1366,45 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                             className="bg-red-500/90 hover:bg-red-600/90 text-white font-bold py-3 px-6 rounded-2xl shadow-xl transition-all duration-200 backdrop-blur-sm flex items-center space-x-2"
                             title="Exit Fullscreen"
                           >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            <svg
+                              className="w-5 h-5"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M6 18L18 6M6 6l12 12"
+                              />
                             </svg>
                             <span>Exit</span>
                           </button>
                         </div>
-                        
+
                         {/* Flip Camera Button - Bottom Right */}
                         {availableCameras.length > 1 && (
                           <div className="absolute bottom-6 right-6 pointer-events-auto">
                             <button
                               onClick={flipCamera}
                               className="bg-gray-700/90 hover:bg-gray-600/90 text-white font-bold py-4 px-6 rounded-2xl shadow-xl transition-all duration-200 backdrop-blur-sm flex items-center space-x-2"
-                              title={`Switch to ${facingMode === 'user' ? 'back' : 'front'} camera`}
+                              title={`Switch to ${
+                                facingMode === "user" ? "back" : "front"
+                              } camera`}
                             >
-                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              <svg
+                                className="w-6 h-6"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                                />
                               </svg>
                               <span>Flip Camera</span>
                             </button>
@@ -1063,56 +1412,75 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                         )}
                       </div>
                     )}
-                    
+
                     {/* Overlay Play Buttons for Detected Persons */}
                     {detectedPersons.map((detectedPerson, index) => {
                       const { person, box } = detectedPerson;
                       const isInCooldown = isPersonInCooldown(person.name);
                       const cooldownTime = personCooldowns.get(person.name);
                       let remainingMinutes = 0;
-                      
+
                       if (cooldownTime) {
-                        const timeLeft = (PERSON_COOLDOWN_MINUTES * 60 * 1000) - (Date.now() - cooldownTime);
+                        const timeLeft =
+                          PERSON_COOLDOWN_MINUTES * 60 * 1000 -
+                          (Date.now() - cooldownTime);
                         remainingMinutes = Math.ceil(timeLeft / (60 * 1000));
                       }
-                      
+
                       return (
                         <button
                           key={`${person.name}-${index}`}
                           onClick={() => {
                             generatePersonDescription(person, true);
                             // Reset cooldown when manually triggered
-                            setPersonCooldowns(prev => new Map(prev.set(person.name, Date.now())));
+                            setPersonCooldowns(
+                              (prev) =>
+                                new Map(prev.set(person.name, Date.now()))
+                            );
                           }}
                           disabled={isAssistantSpeaking}
                           className={`absolute text-xs font-bold rounded-full w-10 h-10 flex items-center justify-center transition-all duration-200 hover:scale-110 shadow-lg backdrop-blur-sm ${
-                            isAssistantSpeaking 
-                              ? 'bg-gray-400/80 text-gray-600 cursor-not-allowed' 
-                              : isInCooldown 
-                                ? 'bg-orange-500/90 text-white hover:bg-orange-600/90' 
-                                : 'bg-green-500/90 text-white hover:bg-green-600/90'
+                            isAssistantSpeaking
+                              ? "bg-gray-400/80 text-gray-600 cursor-not-allowed"
+                              : isInCooldown
+                              ? "bg-orange-500/90 text-white hover:bg-orange-600/90"
+                              : "bg-green-500/90 text-white hover:bg-green-600/90"
                           }`}
                           style={{
                             left: `${box.x + box.width + 8}px`,
                             top: `${box.y}px`,
                           }}
                           title={
-                            isAssistantSpeaking 
-                              ? 'Assistant is currently speaking' 
-                              : isInCooldown 
-                                ? `Play ${person.name} (${remainingMinutes}m cooldown)` 
-                                : `Play ${person.name}`
+                            isAssistantSpeaking
+                              ? "Assistant is currently speaking"
+                              : isInCooldown
+                              ? `Play ${person.name} (${remainingMinutes}m cooldown)`
+                              : `Play ${person.name}`
                           }
                         >
                           {isAssistantSpeaking ? (
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6" />
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M10 9v6m4-6v6"
+                              />
                             </svg>
                           ) : isInCooldown ? (
                             remainingMinutes
                           ) : (
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                              <path d="M8 5v14l11-7z"/>
+                            <svg
+                              className="w-4 h-4"
+                              fill="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path d="M8 5v14l11-7z" />
                             </svg>
                           )}
                         </button>
@@ -1127,19 +1495,32 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
 
             {/* Description Caption Area */}
             {detectedPersons.length > 0 && (
-              <div className={`${isFullscreen ? 'fixed bottom-6 left-6 right-6' : 'mt-6'} bg-black/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-600/50`}>
+              <div
+                className={`${
+                  isFullscreen ? "fixed bottom-6 left-6 right-6" : "mt-6"
+                } bg-black/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-600/50`}
+              >
                 <div className="text-center">
-                  <h4 className="text-sm font-semibold text-white/90 mb-2">Currently Detected</h4>
+                  <h4 className="text-sm font-semibold text-white/90 mb-2">
+                    Currently Detected
+                  </h4>
                   <div className="space-y-2">
                     {detectedPersons.map((detectedPerson, index) => (
-                      <div key={`${detectedPerson.person.name}-${index}`} className="bg-white/10 rounded-xl p-3 border border-white/20">
+                      <div
+                        key={`${detectedPerson.person.name}-${index}`}
+                        className="bg-white/10 rounded-xl p-3 border border-white/20"
+                      >
                         <div className="text-white">
                           <div className="flex items-center justify-center space-x-2 mb-2">
-                            <span className="font-semibold">{detectedPerson.person.name}</span>
+                            <span className="font-semibold">
+                              {detectedPerson.person.name}
+                            </span>
                             {detectedPerson.person.relationship && (
                               <>
                                 <span className="text-white/60">•</span>
-                                <span className="text-white/80">{detectedPerson.person.relationship}</span>
+                                <span className="text-white/80">
+                                  {detectedPerson.person.relationship}
+                                </span>
                               </>
                             )}
                           </div>
@@ -1163,8 +1544,18 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
               <div className="mb-8">
                 <div className="flex items-center justify-center mb-6">
                   <div className="bg-gradient-to-r from-blue-500 to-green-500 p-4 rounded-3xl shadow-xl">
-                    <svg className="w-16 h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    <svg
+                      className="w-16 h-16 text-white"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                      />
                     </svg>
                   </div>
                 </div>
@@ -1172,8 +1563,9 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                   Welcome to Memory Care AI
                 </h2>
                 <p className="text-lg sm:text-xl text-slate-600 leading-relaxed max-w-3xl mx-auto">
-                  Your intelligent companion for facial recognition and memory assistance. 
-                  Advanced AI technology to help you remember and connect with the important people in your life.
+                  Your intelligent companion for facial recognition and memory
+                  assistance. Advanced AI technology to help you remember and
+                  connect with the important people in your life.
                 </p>
               </div>
 
@@ -1181,33 +1573,83 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
                 <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-blue-200/50">
                   <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-4 mx-auto">
-                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    <svg
+                      className="w-6 h-6 text-blue-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                      />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-semibold text-slate-800 mb-2">Real-time Recognition</h3>
-                  <p className="text-slate-600 text-sm">Instantly identify people using advanced facial recognition technology</p>
+                  <h3 className="text-lg font-semibold text-slate-800 mb-2">
+                    Real-time Recognition
+                  </h3>
+                  <p className="text-slate-600 text-sm">
+                    Instantly identify people using advanced facial recognition
+                    technology
+                  </p>
                 </div>
-                
+
                 <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-green-200/50">
                   <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mb-4 mx-auto">
-                    <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                    <svg
+                      className="w-6 h-6 text-green-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                      />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-semibold text-slate-800 mb-2">Voice Assistance</h3>
-                  <p className="text-slate-600 text-sm">Get spoken context and information about recognized individuals</p>
+                  <h3 className="text-lg font-semibold text-slate-800 mb-2">
+                    Voice Assistance
+                  </h3>
+                  <p className="text-slate-600 text-sm">
+                    Get spoken context and information about recognized
+                    individuals
+                  </p>
                 </div>
-                
+
                 <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-purple-200/50 sm:col-span-2 lg:col-span-1">
                   <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mb-4 mx-auto">
-                    <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    <svg
+                      className="w-6 h-6 text-purple-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                      />
                     </svg>
                   </div>
-                  <h3 className="text-lg font-semibold text-slate-800 mb-2">Privacy First</h3>
-                  <p className="text-slate-600 text-sm">Your data is secure and processed locally with full privacy protection</p>
+                  <h3 className="text-lg font-semibold text-slate-800 mb-2">
+                    Privacy First
+                  </h3>
+                  <p className="text-slate-600 text-sm">
+                    Your data is secure and processed locally with full privacy
+                    protection
+                  </p>
                 </div>
               </div>
 
@@ -1260,18 +1702,38 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                   href="/signup"
                   className="w-full flex items-center justify-center px-6 py-4 border border-transparent text-base font-semibold rounded-2xl text-white bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-1"
                 >
-                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  <svg
+                    className="w-5 h-5 mr-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                    />
                   </svg>
                   Create Account with Email
                 </Link>
-                
+
                 <Link
                   href="/login"
                   className="w-full flex items-center justify-center px-6 py-4 border border-transparent text-base font-semibold rounded-2xl text-white bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-1"
                 >
-                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                  <svg
+                    className="w-5 h-5 mr-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"
+                    />
                   </svg>
                   Sign In
                 </Link>
