@@ -261,11 +261,31 @@ export default function Home() {
     getAvailableCameras();
   }, []);
 
+  // Handle assistant enable/disable changes
+  useEffect(() => {
+    // If assistant is disabled, stop any currently playing audio
+    if (!isAssistantEnabled && isAssistantSpeaking && audioStreamerRef.current) {
+      console.log("Assistant disabled - stopping current audio");
+      audioStreamerRef.current.stop();
+      setIsAssistantSpeaking(false);
+      setAssistantStatus("🔇 Voice assistant disabled");
+      setTimeout(() => setAssistantStatus(""), 3000);
+    }
+  }, [isAssistantEnabled]);
+
   // Simple function to call Gemini Live API for person description
   const generatePersonDescription = async (person: any, forcePlay = false) => {
     console.log(
       `Attempting to describe ${person.name}, forcePlay: ${forcePlay}, isAssistantEnabled: ${isAssistantEnabled}, isAssistantSpeaking: ${isAssistantSpeaking}`
     );
+
+    // Always check if assistant is disabled - even for force play
+    if (!isAssistantEnabled) {
+      console.log("Assistant disabled, skipping");
+      setAssistantStatus("🔇 Voice assistant is disabled");
+      setTimeout(() => setAssistantStatus(""), 2000);
+      return;
+    }
 
     // Global cooldown between speeches
     if (!forcePlay && Date.now() - lastSpeechTime < GLOBAL_COOLDOWN_MS) {
@@ -625,7 +645,9 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
               }
 
               // Button background with gradient
-              if (isAssistantSpeaking) {
+              if (!isAssistantEnabled) {
+                ctx.fillStyle = "rgba(107, 114, 128, 0.8)"; // gray-500 for disabled
+              } else if (isAssistantSpeaking) {
                 ctx.fillStyle = "rgba(156, 163, 175, 0.8)"; // gray-400
               } else if (isInCooldown) {
                 ctx.fillStyle = "rgba(249, 115, 22, 0.9)"; // orange-500
@@ -663,11 +685,17 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
               ctx.fillStyle = "white";
               ctx.font = "12px Arial";
               ctx.textAlign = "center";
-              const buttonText = isAssistantSpeaking
-                ? "Speaking..."
-                : isInCooldown
-                ? `${remainingMinutes}m left`
-                : "▶ Play";
+              
+              let buttonText;
+              if (!isAssistantEnabled) {
+                buttonText = "🔇 Disabled";
+              } else if (isAssistantSpeaking) {
+                buttonText = "Speaking...";
+              } else if (isInCooldown) {
+                buttonText = `${remainingMinutes}m left`;
+              } else {
+                buttonText = "▶ Play";
+              }
 
               const textX = buttonInfo.buttonX + buttonInfo.buttonWidth / 2;
               const textY =
@@ -729,7 +757,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
     loadAssets();
   }, [user]);
 
-  // Restart face detection when camera starts (only if models are loaded)
+  // Restart face detection when camera starts or assistant mode changes
   useEffect(() => {
     if (
       isWebcamStarted &&
@@ -739,7 +767,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
     ) {
       startFaceDetection();
     }
-  }, [isWebcamStarted, modelsLoaded]);
+  }, [isWebcamStarted, modelsLoaded, isAssistantEnabled]);
 
   // Cleanup interval and audio on component unmount
   useEffect(() => {
@@ -1262,13 +1290,28 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                   {/* AI Assistant Toggle */}
                   <div className="mb-8 text-center">
                     <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6 inline-block shadow-lg border border-slate-200/50">
-                      <h4 className="text-lg font-semibold text-slate-700 mb-4">
+                      <h4 className="text-lg font-semibold text-slate-700 mb-2">
                         Voice Assistant Control
                       </h4>
-                      <button
-                        onClick={() =>
-                          setIsAssistantEnabled(!isAssistantEnabled)
+                      <p className="text-sm text-slate-600 mb-4">
+                        {isAssistantEnabled 
+                          ? "AI will automatically describe recognized faces and respond to manual triggers"
+                          : "Voice assistant is disabled - no audio will play automatically or manually"
                         }
+                      </p>
+                      <button
+                        onClick={() => {
+                          const newState = !isAssistantEnabled;
+                          setIsAssistantEnabled(newState);
+                          // Provide immediate feedback
+                          if (!newState) {
+                            setAssistantStatus("🔇 Voice assistant disabled");
+                            setTimeout(() => setAssistantStatus(""), 3000);
+                          } else {
+                            setAssistantStatus("🔊 Voice assistant enabled");
+                            setTimeout(() => setAssistantStatus(""), 3000);
+                        }
+                        }}
                         className={`px-8 py-4 rounded-2xl text-lg font-semibold transition-all duration-200 shadow-lg transform hover:scale-105 ${
                           isAssistantEnabled
                             ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 shadow-blue-200"
