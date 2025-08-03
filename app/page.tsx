@@ -1608,13 +1608,11 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                         </div>
 
                         {/* Flip Camera Button - Bottom Right */}
-                        <div className="absolute bottom-6 right-6 pointer-events-auto z-50">
+                        <div className="absolute bottom-0 right-0 p-4 pointer-events-auto z-50">
                           <button
                             onClick={flipCamera}
                             className="bg-gray-700/90 hover:bg-gray-600/90 text-white font-bold py-4 px-6 rounded-2xl shadow-xl transition-all duration-200 backdrop-blur-sm flex items-center space-x-2"
-                            title={`Switch to ${
-                              facingMode === "user" ? "back" : "front"
-                            } camera`}
+                            title={`Switch to ${facingMode === "user" ? "back" : "front"} camera`}
                           >
                             <svg
                               className="w-6 h-6"
