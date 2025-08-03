@@ -74,6 +74,44 @@ export default function Home() {
   const detectedPersonsRef = useRef<Set<string>>(new Set());
   const lastDetectionTimeRef = useRef<number>(0);
 
+  // Store canvas button coordinates for click detection
+  const canvasButtonsRef = useRef<
+    Array<{
+      person: any;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }>
+  >([]);
+
+  // Handle canvas clicks for play buttons
+  const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    const x = (event.clientX - rect.left) * scaleX;
+    const y = (event.clientY - rect.top) * scaleY;
+
+    // Check if click is on any button
+    for (const button of canvasButtonsRef.current) {
+      if (
+        x >= button.x &&
+        x <= button.x + button.width &&
+        y >= button.y &&
+        y <= button.y + button.height
+      ) {
+        // Clicked on a play button
+        generatePersonDescription(button.person, true);
+        break;
+      }
+    }
+  };
+
   // Fullscreen functions
   const enterFullscreen = async () => {
     if (document.documentElement.requestFullscreen) {
@@ -346,7 +384,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
           video,
           new faceapi.TinyFaceDetectorOptions({
             inputSize: window.innerWidth < 480 ? 224 : 416,
-            scoreThreshold: 0.7,
+            scoreThreshold: 0.5,
           })
         )
         .withFaceLandmarks(true) // Use tiny landmarks model
@@ -362,6 +400,9 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
         width: video.videoWidth,
         height: video.videoHeight,
       };
+
+      // Clear canvas button coordinates for this detection cycle
+      canvasButtonsRef.current = [];
 
       // Ensure canvas matches video dimensions
       if (
@@ -462,27 +503,36 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
             const box = detection.detection.box;
 
             // Helper function to draw multi-line text with background
-            const drawContextInfo = (x: number, y: number, lines: string[]) => {
+            const drawContextInfo = (
+              x: number,
+              y: number,
+              lines: string[],
+              buttonWidth = 80,
+              buttonHeight = 30
+            ) => {
               const lineHeight = 22;
               const padding = 8;
-              const maxWidth = Math.max(
+              const maxTextWidth = Math.max(
                 ...lines.map((line) => ctx.measureText(line).width)
               );
+              const totalWidth = Math.max(maxTextWidth, buttonWidth);
+              const totalHeight =
+                lines.length * lineHeight + buttonHeight + padding;
 
               // Draw background rectangle
               ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
               ctx.fillRect(
                 x - padding,
                 y - padding,
-                maxWidth + padding * 2,
-                lines.length * lineHeight + padding
+                totalWidth + padding * 2,
+                totalHeight + padding
               );
 
               // Create gradient for text fill
               const textGradient = ctx.createLinearGradient(
                 x,
                 y,
-                x + maxWidth,
+                x + maxTextWidth,
                 y
               );
               textGradient.addColorStop(0, "#3b82f6"); // blue-500
@@ -498,6 +548,15 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                 ctx.strokeText(line, x, lineY);
                 ctx.fillText(line, x, lineY);
               });
+
+              return {
+                buttonX: x,
+                buttonY: y + lines.length * lineHeight + 5,
+                buttonWidth: buttonWidth,
+                buttonHeight: buttonHeight,
+                totalWidth: totalWidth + padding * 2,
+                totalHeight: totalHeight + padding * 2,
+              };
             };
 
             // Draw bounding box
@@ -528,8 +587,83 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                 : []),
             ];
 
-            // Draw context info at adjusted X
-            drawContextInfo(drawX, box.y - 10, lines);
+            // Draw context info at adjusted X and get button coordinates
+            const buttonInfo = drawContextInfo(drawX, box.y - 10, lines);
+
+            // Draw play button inside the context box if this is a known person
+            if (fullPersonData) {
+              const isInCooldown = isPersonInCooldown(fullPersonData.name);
+              const cooldownTime = personCooldowns.get(fullPersonData.name);
+              let remainingMinutes = 0;
+
+              if (cooldownTime) {
+                const timeLeft =
+                  PERSON_COOLDOWN_MINUTES * 60 * 1000 -
+                  (Date.now() - cooldownTime);
+                remainingMinutes = Math.ceil(timeLeft / (60 * 1000));
+              }
+
+              // Button background with gradient
+              if (isAssistantSpeaking) {
+                ctx.fillStyle = "rgba(156, 163, 175, 0.8)"; // gray-400
+              } else if (isInCooldown) {
+                ctx.fillStyle = "rgba(249, 115, 22, 0.9)"; // orange-500
+              } else {
+                // Create blue to green gradient for normal state
+                const buttonGradient = ctx.createLinearGradient(
+                  buttonInfo.buttonX,
+                  buttonInfo.buttonY,
+                  buttonInfo.buttonX + buttonInfo.buttonWidth,
+                  buttonInfo.buttonY
+                );
+                buttonGradient.addColorStop(0, "rgba(59, 130, 246, 0.9)"); // blue-500
+                buttonGradient.addColorStop(1, "rgba(16, 185, 129, 0.9)"); // green-500
+                ctx.fillStyle = buttonGradient;
+              }
+
+              ctx.fillRect(
+                buttonInfo.buttonX,
+                buttonInfo.buttonY,
+                buttonInfo.buttonWidth,
+                buttonInfo.buttonHeight
+              );
+
+              // Button border
+              ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+              ctx.lineWidth = 1;
+              ctx.strokeRect(
+                buttonInfo.buttonX,
+                buttonInfo.buttonY,
+                buttonInfo.buttonWidth,
+                buttonInfo.buttonHeight
+              );
+
+              // Button text
+              ctx.fillStyle = "white";
+              ctx.font = "12px Arial";
+              ctx.textAlign = "center";
+              const buttonText = isAssistantSpeaking
+                ? "Speaking..."
+                : isInCooldown
+                ? `${remainingMinutes}m left`
+                : "▶ Play";
+
+              const textX = buttonInfo.buttonX + buttonInfo.buttonWidth / 2;
+              const textY =
+                buttonInfo.buttonY + buttonInfo.buttonHeight / 2 + 4;
+
+              ctx.fillText(buttonText, textX, textY);
+              ctx.textAlign = "left"; // Reset text alignment
+
+              // Store button coordinates for click detection
+              canvasButtonsRef.current.push({
+                person: fullPersonData,
+                x: buttonInfo.buttonX,
+                y: buttonInfo.buttonY,
+                width: buttonInfo.buttonWidth,
+                height: buttonInfo.buttonHeight,
+              });
+            }
           }
         });
       }
@@ -617,7 +751,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                 img,
                 new faceapi.TinyFaceDetectorOptions({
                   inputSize: window.innerWidth < 480 ? 224 : 416,
-                  scoreThreshold: 0.7,
+                  scoreThreshold: 0.5,
                 })
               )
               .withFaceLandmarks(true) // Use tiny landmarks model
@@ -1286,7 +1420,8 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                       ref={canvasRef}
                       width="720"
                       height="560"
-                      className={`absolute top-0 left-0 ${
+                      onClick={handleCanvasClick}
+                      className={`absolute top-0 left-0 cursor-pointer ${
                         isFullscreen ? "" : "rounded-2xl"
                       } ${
                         facingMode === "user" && isFullscreen
@@ -1429,79 +1564,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                       </div>
                     )}
 
-                    {/* Overlay Play Buttons for Detected Persons */}
-                    {detectedPersons.map((detectedPerson, index) => {
-                      const { person, box } = detectedPerson;
-                      const isInCooldown = isPersonInCooldown(person.name);
-                      const cooldownTime = personCooldowns.get(person.name);
-                      let remainingMinutes = 0;
-
-                      if (cooldownTime) {
-                        const timeLeft =
-                          PERSON_COOLDOWN_MINUTES * 60 * 1000 -
-                          (Date.now() - cooldownTime);
-                        remainingMinutes = Math.ceil(timeLeft / (60 * 1000));
-                      }
-
-                      return (
-                        <button
-                          key={`${person.name}-${index}`}
-                          onClick={() => {
-                            generatePersonDescription(person, true);
-                            // Reset cooldown when manually triggered
-                            setPersonCooldowns(
-                              (prev) =>
-                                new Map(prev.set(person.name, Date.now()))
-                            );
-                          }}
-                          disabled={isAssistantSpeaking}
-                          className={`absolute text-xs font-bold rounded-full w-10 h-10 flex items-center justify-center transition-all duration-200 hover:scale-110 shadow-lg backdrop-blur-sm ${
-                            isAssistantSpeaking
-                              ? "bg-gray-400/80 text-gray-600 cursor-not-allowed"
-                              : isInCooldown
-                              ? "bg-orange-500/90 text-white hover:bg-orange-600/90"
-                              : "bg-gradient-to-r from-blue-500 to-green-500 text-white hover:from-blue-600 hover:to-green-600"
-                          }`}
-                          style={{
-                            left: `${box.x + box.width + 8}px`,
-                            top: `${box.y}px`,
-                          }}
-                          title={
-                            isAssistantSpeaking
-                              ? "Assistant is currently speaking"
-                              : isInCooldown
-                              ? `Play ${person.name} (${remainingMinutes}m cooldown)`
-                              : `Play ${person.name}`
-                          }
-                        >
-                          {isAssistantSpeaking ? (
-                            <svg
-                              className="w-4 h-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M10 9v6m4-6v6"
-                              />
-                            </svg>
-                          ) : isInCooldown ? (
-                            remainingMinutes
-                          ) : (
-                            <svg
-                              className="w-4 h-4"
-                              fill="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path d="M8 5v14l11-7z" />
-                            </svg>
-                          )}
-                        </button>
-                      );
-                    })}
+                    {/* Canvas buttons are now drawn directly on the canvas - no overlay buttons needed */}
                   </div>
                 </div>
               </div>
