@@ -1058,33 +1058,6 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                       </div>
                     </div>
 
-                    {/* Description */}
-                    <div className="bg-white/70 backdrop-blur-sm rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-6 shadow-sm">
-                      <p className="text-slate-700 text-sm sm:text-base lg:text-lg leading-relaxed mb-4">
-                        🧠 <strong>Advanced AI Recognition:</strong> Our system
-                        helps identify and remember people in your life,
-                        providing instant context and background information.
-                      </p>
-                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-xs sm:text-sm text-slate-600">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
-                          <span className="leading-tight">Real-time face detection</span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></div>
-                          <span className="leading-tight">Voice assistance enabled</span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <div className="w-2 h-2 bg-purple-500 rounded-full flex-shrink-0"></div>
-                          <span className="leading-tight">Privacy-focused design</span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <div className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0"></div>
-                          <span className="leading-tight">Personalized memories</span>
-                        </div>
-                      </div>
-                    </div>
-
                     {/* Action Buttons */}
                     <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                       <Link
@@ -1197,12 +1170,12 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                   )}
 
                   {/* Enhanced AI Assistant Toggle */}
-                  <div className="mb-6 sm:mb-8 text-center">
-                    <div className="bg-gradient-to-r from-white/70 to-white/50 backdrop-blur-sm rounded-2xl sm:rounded-3xl p-4 sm:p-6 lg:p-8 inline-block shadow-xl border border-slate-200/50 max-w-lg mx-auto w-full">
-                      <div className="flex flex-col sm:flex-row items-center justify-center mb-4">
-                        <div className="bg-gradient-to-r from-purple-500 to-blue-500 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl mb-3 sm:mb-0 sm:mr-3 shadow-lg">
+                  <div className="mb-4 sm:mb-6 text-center">
+                    <div className="bg-gradient-to-r from-white/70 to-white/50 backdrop-blur-sm rounded-2xl sm:rounded-3xl p-3 sm:p-4 lg:p-5 inline-block shadow-xl border border-slate-200/50 max-w-lg mx-auto w-full">
+                      <div className="flex flex-col sm:flex-row items-center justify-center mb-3">
+                        <div className="bg-gradient-to-r from-purple-500 to-blue-500 p-2 sm:p-2.5 rounded-xl sm:rounded-2xl mb-2 sm:mb-0 sm:mr-3 shadow-lg">
                           <svg
-                            className="w-6 h-6 sm:w-7 sm:h-7 text-white"
+                            className="w-5 h-5 sm:w-6 sm:h-6 text-white"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -1216,7 +1189,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                           </svg>
                         </div>
                         <div className="text-center sm:text-left">
-                          <h4 className="text-lg sm:text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+                          <h4 className="text-base sm:text-lg font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
                             Voice Assistant
                           </h4>
                           <p className="text-xs sm:text-sm text-slate-600">
@@ -1224,17 +1197,8 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                           </p>
                         </div>
                       </div>
-                      
-                      <div className="bg-white/60 rounded-xl sm:rounded-2xl p-3 sm:p-4 mb-4 sm:mb-6">
-                        <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">
-                          {isAssistantEnabled 
-                            ? "🎤 AI will automatically describe recognized faces and provide helpful context about the people you meet."
-                            : "🔇 Voice assistant is currently disabled. Enable it to get automatic audio descriptions of recognized individuals."
-                          }
-                        </p>
-                      </div>
 
-                      <div className="flex items-center justify-center space-x-3 sm:space-x-4 mb-4 sm:mb-6">
+                      <div className="flex items-center justify-center space-x-3 sm:space-x-4 mb-3 sm:mb-4">
                         {/* Toggle Switch */}
                         <span className={`text-xs sm:text-sm font-medium ${!isAssistantEnabled ? 'text-slate-900' : 'text-slate-500'}`}>
                           OFF
@@ -1269,7 +1233,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
 
                       {/* Status Indicator */}
                       {assistantStatus && (
-                        <div className="mb-4">
+                        <div className="mb-2">
                           <span className="inline-block bg-gradient-to-r from-blue-100 to-purple-100 text-blue-800 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-medium shadow-md">
                             {assistantStatus}
                           </span>
@@ -1323,7 +1287,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                             )}
                             {modelsLoaded && facesLoaded && (
                               <p className="text-xs sm:text-sm text-green-600 font-medium">
-                                🎉 System ready! {dbPersons.length} people loaded
+                              System ready. {dbPersons.length} people loaded
                               </p>
                             )}
                           </div>
