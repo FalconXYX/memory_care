@@ -413,12 +413,16 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
               ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
               ctx.fillRect(x - padding, y - padding, maxWidth + padding * 2, lines.length * lineHeight + padding);
               
-              // Draw text lines
-              ctx.fillStyle = textColor;
+              // Create gradient for text fill
+              const textGradient = ctx.createLinearGradient(x, y, x + maxWidth, y);
+              textGradient.addColorStop(0, '#3b82f6'); // blue-500
+              textGradient.addColorStop(1, '#10b981'); // green-500
+              ctx.fillStyle = textGradient;
               ctx.font = "16px Arial";
               ctx.strokeStyle = "black";
               ctx.lineWidth = 2;
               
+              // Draw text lines
               lines.forEach((line, index) => {
                 const lineY = y + index * lineHeight;
                 ctx.strokeText(line, x, lineY);
@@ -433,7 +437,11 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
               // Mirror horizontally: flip x coordinate when in fullscreen mirrored view
               drawX = canvas.width - box.x - box.width;
             }
-            ctx.strokeStyle = textColor;
+            // Use a gradient stroke instead of solid color
+            const gradient = ctx.createLinearGradient(drawX, box.y, drawX + box.width, box.y);
+            gradient.addColorStop(0, '#3b82f6'); // blue-500
+            gradient.addColorStop(1, '#10b981'); // green-500
+            ctx.strokeStyle = gradient;
             ctx.lineWidth = 2;
             ctx.strokeRect(drawX, box.y, box.width, box.height);
 
@@ -1091,7 +1099,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                               ? 'bg-gray-400/80 text-gray-600 cursor-not-allowed' 
                               : isInCooldown 
                                 ? 'bg-orange-500/90 text-white hover:bg-orange-600/90' 
-                                : 'bg-green-500/90 text-white hover:bg-green-600/90'
+                                : 'bg-gradient-to-r from-blue-500 to-green-500 text-white hover:from-blue-600 hover:to-green-600'
                           }`}
                           style={{
                             left: `${box.x + box.width + 8}px`,
@@ -1133,7 +1141,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                   <h4 className="text-sm font-semibold text-white/90 mb-2">Currently Detected</h4>
                   <div className="space-y-2">
                     {detectedPersons.map((detectedPerson, index) => (
-                      <div key={`${detectedPerson.person.name}-${index}`} className="bg-white/10 rounded-xl p-3 border border-white/20">
+                      <div key={`${detectedPerson.person.name}-${index}`} className="relative bg-white/10 rounded-xl p-3 border border-white/20">
                         <div className="text-white">
                           <div className="flex items-center justify-center space-x-2 mb-2">
                             <span className="font-semibold">{detectedPerson.person.name}</span>
@@ -1149,6 +1157,14 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                               📝 {detectedPerson.person.description}
                             </p>
                           )}
+                          {/* Play button inside caption */}
+                          <button
+                            onClick={() => generatePersonDescription(detectedPerson.person, true)}
+                            disabled={isAssistantSpeaking}
+                            className="absolute top-2 right-2 w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-green-500 text-white hover:from-blue-600 hover:to-green-600 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            ▶️
+                          </button>
                         </div>
                       </div>
                     ))}
