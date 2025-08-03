@@ -2,6 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase";
+import ConsentModal from "@/components/consentModal";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -44,7 +45,15 @@ export default function LoginPage() {
             Sign Up
           </Link>
         </div>
-        <div className="px-6 py-8 sm:px-8">
+        <div className="px-6 sm:px-8">
+          <Link
+            href="/"
+            className="inline-flex items-center text-blue-600 hover:text-blue-800
+                      font-medium text-lg mb-6"
+          >
+            <span className="mr-2 text-xl">←</span>
+            Back
+          </Link>
           <h2 className="text-2xl sm:text-3xl font-extrabold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent mb-4 text-center drop-shadow-lg">
             Login
           </h2>

@@ -2,12 +2,17 @@
 import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase";
+import ConsentModal from "@/components/consentModal";
 
 export default function SignUpPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [consentGiven, setConsentGiven] = useState(false);
+  const [showConsent, setShowConsent] = useState(false);
+  const [pendingAction, setPendingAction] = useState<() => void>(() => {});
+
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,6 +42,26 @@ export default function SignUpPage() {
     }
   };
 
+  const requestConsent = (action: () => void) => {
+    if (consentGiven) {
+      action();
+    } else {
+      setPendingAction(() => action);
+      setShowConsent(true);
+    }
+  };
+
+  const onAccept = () => {
+    setConsentGiven(true);
+    setShowConsent(false);
+    pendingAction();
+  };
+
+  // if the modal is up, only render it
+  if (showConsent) {
+    return <ConsentModal onAccept={onAccept} />;
+  }
+
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-blue-50 to-green-50">
       <div className="max-w-lg mx-auto">
@@ -55,12 +80,20 @@ export default function SignUpPage() {
             Login
           </Link>
         </div>
-        <div className="px-6 py-8 sm:px-8">
+        <div className="px-6 sm:px-8">
+          <Link
+            href="/"
+            className="inline-flex items-center text-blue-600 hover:text-blue-800
+                      font-medium text-lg mb-6"
+          >
+            <span className="mr-2 text-xl">←</span>
+            Back
+          </Link>
           <h2 className="text-2xl sm:text-3xl font-extrabold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent mb-4 text-center drop-shadow-lg">
             Sign Up
           </h2>
           <button
-            onClick={handleGoogleSignUp}
+            onClick={() => requestConsent(handleGoogleSignUp)}
             disabled={loading}
             className="w-full flex justify-center items-center py-3 px-4 border border-blue-100 rounded-xl shadow-md bg-gradient-to-r from-white to-blue-50 text-base font-medium text-blue-700 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 mb-4 transition-all"
           >
@@ -94,7 +127,7 @@ export default function SignUpPage() {
               </span>
             </div>
           </div>
-          <form onSubmit={handleSignUp} className="space-y-5">
+          <form onSubmit={e => requestConsent(() => handleSignUp(e))} className="space-y-5">
             <div>
               <label
                 htmlFor="email"
