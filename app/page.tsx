@@ -7,10 +7,12 @@ import { useEffect, useRef, useState } from "react";
 import * as faceapi from "face-api.js";
 import { AudioStreamer } from "@/lib/audio-streamer";
 import { audioContext } from "@/lib/audio-utils";
+import ConsentModal from "@/components/consentModal";
 
 export default function Home() {
   const { user, loading, signOut } = useAuth();
-
+  const [loading1, setLoading1] = useState(false);
+  const [message, setMessage] = useState("");
   // Face detection states
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -56,6 +58,10 @@ export default function Home() {
       textColor: string;
     }>
   >([]);
+  const [consentGiven, setConsentGiven] = useState(false);
+  const [showConsent, setShowConsent] = useState(false);
+  const [pendingAction, setPendingAction] = useState<() => void>(() => {});
+
 
   // Cooldown configuration in minutes
   const PERSON_COOLDOWN_MINUTES = 5;
@@ -178,6 +184,21 @@ export default function Home() {
     }
 
     return isInCooldown;
+  };
+
+  const requestConsent = (action: () => void) => {
+    if (consentGiven) {
+      action();
+    } else {
+      setPendingAction(() => action);
+      setShowConsent(true);
+    }
+  };
+
+  const onAccept = () => {
+    setConsentGiven(true);
+    setShowConsent(false);
+    pendingAction();
   };
 
   // Initialize audio context and streamer
@@ -701,14 +722,23 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
   };
 
   const handleGoogleSignIn = async () => {
+    setLoading1(true);
+    setMessage("");
     const supabase = createClient();
-    await supabase.auth.signInWithOAuth({
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
     });
+    if (error) {
+      setMessage(error.message);
+      setLoading1(false);
+    }
   };
+
+  // if the modal is up, only render it
+  if (showConsent) {
+    return <ConsentModal onAccept={onAccept} />;
+  }
 
   if (loading) {
     return (
@@ -1697,7 +1727,7 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
               {/* Sign-in Options */}
               <div className="max-w-sm mx-auto space-y-4">
                 <button
-                  onClick={handleGoogleSignIn}
+                  onClick={() => requestConsent(handleGoogleSignIn)}
                   className="w-full flex justify-center items-center py-4 px-6 border border-gray-300 rounded-2xl shadow-lg bg-white/80 backdrop-blur-sm text-base font-semibold text-gray-700 hover:bg-gray-50/80 hover:shadow-xl transition-all duration-200 transform hover:-translate-y-1"
                 >
                   <svg className="w-6 h-6 mr-3" viewBox="0 0 24 24">
