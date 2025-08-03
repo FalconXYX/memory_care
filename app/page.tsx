@@ -1085,6 +1085,92 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                       </div>
                     </div>
 
+                    {/* Quick Preview of Registered People */}
+                    {dbPersons.length > 0 && (
+                      <div className="bg-gradient-to-r from-slate-50/80 to-white/80 backdrop-blur-sm rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-6 shadow-sm border border-slate-200/50">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-sm sm:text-base font-semibold text-slate-800 flex items-center">
+                            <div className="w-2 h-2 bg-gradient-to-r from-blue-500 to-green-500 rounded-full mr-2"></div>
+                            Registered People ({dbPersons.length})
+                          </h3>
+                          <Link 
+                            href="/person"
+                            className="text-xs sm:text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors duration-200"
+                          >
+                            View All →
+                          </Link>
+                        </div>
+                        <div className="flex space-x-3 overflow-x-auto pb-2">
+                          {dbPersons.slice(0, 6).map((person, index) => (
+                            <div 
+                              key={person.id} 
+                              className="flex-shrink-0 bg-white/60 rounded-xl p-3 shadow-sm border border-slate-200/30 hover:shadow-md hover:border-slate-300/50 transition-all duration-200 min-w-[100px] sm:min-w-[120px]"
+                            >
+                              <div className="text-center">
+                                <div className="relative mb-2 mx-auto">
+                                  {person.presignedImageUrl ? (
+                                    <div className="relative">
+                                      <img 
+                                        src={person.presignedImageUrl} 
+                                        alt={person.name}
+                                        className="w-12 h-12 sm:w-16 sm:h-16 rounded-full object-cover border-2 border-white shadow-sm"
+                                        onError={(e) => {
+                                          // Fallback to default avatar if image fails to load
+                                          const target = e.currentTarget;
+                                          const nextElement = target.nextElementSibling as HTMLElement;
+                                          target.style.display = 'none';
+                                          if (nextElement) {
+                                            nextElement.style.display = 'flex';
+                                          }
+                                        }}
+                                      />
+                                      <div 
+                                        className="hidden w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-gradient-to-r from-blue-400 to-green-400 items-center justify-center border-2 border-white shadow-sm"
+                                      >
+                                        <span className="text-white font-semibold text-lg sm:text-xl">
+                                          {person.name.charAt(0).toUpperCase()}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-gradient-to-r from-blue-400 to-green-400 flex items-center justify-center border-2 border-white shadow-sm">
+                                      <span className="text-white font-semibold text-lg sm:text-xl">
+                                        {person.name.charAt(0).toUpperCase()}
+                                      </span>
+                                    </div>
+                                  )}
+                                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white"></div>
+                                </div>
+                                <p className="text-xs sm:text-sm font-medium text-slate-800 truncate">
+                                  {person.name}
+                                </p>
+                                <p className="text-xs text-slate-500 truncate">
+                                  {person.relationship}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                          {dbPersons.length > 6 && (
+                            <Link
+                              href="/person"
+                              className="flex-shrink-0 bg-gradient-to-r from-slate-100/80 to-slate-200/80 hover:from-slate-200/80 hover:to-slate-300/80 rounded-xl p-3 shadow-sm border border-slate-200/50 hover:border-slate-300/70 transition-all duration-200 min-w-[100px] sm:min-w-[120px] flex items-center justify-center"
+                            >
+                              <div className="text-center">
+                                <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-slate-300/60 flex items-center justify-center mb-2 mx-auto">
+                                  <span className="text-slate-600 font-semibold text-lg">
+                                    +{dbPersons.length - 6}
+                                  </span>
+                                </div>
+                                <p className="text-xs sm:text-sm font-medium text-slate-600">
+                                  See More
+                                </p>
+                              </div>
+                            </Link>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Action Buttons */}
                     <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                       <Link
