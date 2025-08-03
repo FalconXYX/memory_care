@@ -342,12 +342,13 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
         return;
       }
 
+
       const detections = await faceapi
         .detectAllFaces(
           video,
           new faceapi.TinyFaceDetectorOptions({
-            inputSize: 416,
-            scoreThreshold: 0.5,
+            inputSize: window.innerWidth < 480 ? 224 : 416,
+            scoreThreshold: 0.7,
           })
         )
         .withFaceLandmarks(true) // Use tiny landmarks model
@@ -494,10 +495,10 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
             };
 
             // Draw bounding box
-            // Compute drawing X coordinate to account for mirrored video
+            // Compute drawing X coordinate to account for mirrored video (only when mirrored)
             let drawX = box.x;
-            if (facingMode === "user") {
-              // Mirror horizontally: flip x coordinate
+            if (facingMode === 'user' && isFullscreen) {
+              // Mirror horizontally: flip x coordinate when in fullscreen mirrored view
               drawX = canvas.width - box.x - box.width;
             }
             ctx.strokeStyle = textColor;
@@ -600,8 +601,8 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
               .detectSingleFace(
                 img,
                 new faceapi.TinyFaceDetectorOptions({
-                  inputSize: 416,
-                  scoreThreshold: 0.5,
+                  inputSize: window.innerWidth < 480 ? 224 : 416,
+                  scoreThreshold: 0.7,
                 })
               )
               .withFaceLandmarks(true) // Use tiny landmarks model
@@ -1201,10 +1202,8 @@ Here's the person I see: This is ${person.name}, who is your ${person.relationsh
                           {availableCameras.length > 1 && (
                             <button
                               onClick={flipCamera}
-                              className="bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white font-bold py-3 px-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg transform hover:-translate-y-1 flex items-center space-x-2"
-                              title={`Switch to ${
-                                facingMode === "user" ? "back" : "front"
-                              } camera`}
+                              className="bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white font-bold py-3 px-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 text-lg transform hover:-translate-y-1 flex items-center justify-center space-x-2"
+                              title={`Switch to ${facingMode === 'user' ? 'back' : 'front'} camera`}
                             >
                               <svg
                                 className="w-5 h-5"
